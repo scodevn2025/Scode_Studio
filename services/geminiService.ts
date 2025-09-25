@@ -6,7 +6,7 @@ import type {
   OutputQuality,
 } from '../types';
 
-// FIX: The API key must be obtained from process.env.API_KEY as per the coding guidelines.
+// FIX: Per coding guidelines, the API key must be obtained from process.env.API_KEY.
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const getQualityPromptSuffix = (quality: OutputQuality): string => {
