@@ -6,7 +6,7 @@ import type {
   OutputQuality,
 } from '../types';
 
-// FIX: Per coding guidelines, the API key must be obtained from process.env.API_KEY.
+// FIX: Per API guidelines, the API key must be sourced from process.env.API_KEY. This change also resolves the 'import.meta.env' TypeScript error.
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const getQualityPromptSuffix = (quality: OutputQuality): string => {
@@ -290,8 +290,9 @@ export const analyzeImageAndGetPrompt = async (image: ImageData): Promise<string
       },
     ];
     
+    // FIX: Switched to 'gemini-2.5-flash' model for this general text task, following model usage guidelines.
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image-preview',
+      model: 'gemini-2.5-flash',
       contents: { parts },
     });
 
