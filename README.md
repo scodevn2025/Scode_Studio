@@ -17,7 +17,7 @@ Trước khi bắt đầu, hãy đảm bảo bạn đã có:
 ### Bước 1: Đưa mã nguồn lên GitHub
 
 1.  Tạo một kho chứa (repository) mới trên GitHub.
-2.  Tải toàn bộ mã nguồn của ứng dụng (bao gồm tất cả các file `.tsx`, `.html`, `.json`...) lên kho chứa này.
+2.  Tải toàn bộ mã nguồn của ứng dụng (bao gồm thư mục `api`, và tất cả các file `.tsx`, `.html`, `.json`...) lên kho chứa này.
 
 ### Bước 2: Kết nối Vercel với GitHub
 
@@ -33,20 +33,17 @@ Sau khi import, Vercel sẽ hiển thị trang cấu hình. Đây là bước qu
 
 2.  **Framework Preset:** Vercel rất thông minh và có thể sẽ tự động nhận diện đây là một dự án **Vite**. Nếu không, hãy chọn **Vite** từ danh sách.
 
-3.  **Build and Output Settings:** Giữ nguyên các cài đặt mặc định mà Vercel đề xuất cho Vite. Thông thường sẽ là:
-    *   **Build Command:** `vite build` hoặc `npm run build`
-    *   **Output Directory:** `dist`
-    *   **Install Command:** `npm install` hoặc `yarn install`
+3.  **Build and Output Settings:** Giữ nguyên các cài đặt mặc định mà Vercel đề xuất cho Vite.
 
 4.  **Environment Variables (Biến Môi trường):**
     *   Đây là phần **quan trọng nhất** để ứng dụng của bạn hoạt động.
     *   Tìm đến mục **Environment Variables** và mở nó ra.
     *   Thêm một biến mới với thông tin sau:
-        *   **Name:** `VITE_API_KEY`
+        *   **Name:** `API_KEY`
         *   **Value:** Dán API Key của Google Gemini bạn đã lấy ở phần chuẩn bị vào đây.
     *   Nhấn **"Add"** để lưu lại.
 
-    > **Lưu ý quan trọng:** Tiền tố `VITE_` là **bắt buộc**. Đây là cách Vite (công cụ build ứng dụng này) cho phép mã nguồn phía client (trình duyệt) truy cập vào biến môi trường một cách an toàn. Nếu không có tiền tố này, ứng dụng sẽ không thể tìm thấy API Key.
+    > **Lưu ý:** Vì chúng ta đang sử dụng một API route phía server để xử lý key, chúng ta **không cần** tiền tố `VITE_` nữa. Tên biến chỉ đơn giản là `API_KEY`.
 
 ### Bước 4: Triển khai
 
@@ -54,16 +51,12 @@ Sau khi import, Vercel sẽ hiển thị trang cấu hình. Đây là bước qu
 2.  Vercel sẽ bắt đầu quá trình build và triển khai ứng dụng của bạn. Quá trình này có thể mất vài phút.
 3.  Khi hoàn tất, Vercel sẽ cung cấp cho bạn một đường dẫn (URL) để truy cập vào ứng dụng.
 
-Chúc mừng! Ứng dụng của bạn đã được triển khai thành công lên Vercel.
+Chúc mừng! Ứng dụng của bạn đã được triển khai thành công và an toàn lên Vercel.
 
 ---
 
 ## Xử lý Lỗi thường gặp
 
 *   **Lỗi `Application Error` hoặc các chức năng AI không hoạt động:**
-    *   **Nguyên nhân phổ biến nhất:** Bạn đã quên thêm biến môi trường `VITE_API_KEY` hoặc dán sai key.
-    *   **Cách khắc phục:** Vào dự án của bạn trên Vercel -> **Settings** -> **Environment Variables** và kiểm tra lại biến `VITE_API_KEY` đã được thêm chính xác chưa. Sau khi sửa, bạn cần triển khai lại (re-deploy) để áp dụng thay đổi.
-
-*   **Lỗi trong quá trình Build:**
-    *   Đảm bảo rằng Framework Preset được chọn là **Vite**.
-    *   Kiểm tra log build trên Vercel để xem chi tiết lỗi.
+    *   **Nguyên nhân phổ biến nhất:** Bạn đã quên thêm biến môi trường `API_KEY` hoặc dán sai key.
+    *   **Cách khắc phục:** Vào dự án của bạn trên Vercel -> **Settings** -> **Environment Variables** và kiểm tra lại biến `API_KEY` đã được thêm chính xác chưa. Sau khi sửa, bạn cần triển khai lại (re-deploy) để áp dụng thay đổi.
