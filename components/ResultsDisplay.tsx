@@ -1,0 +1,158 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { SpinnerIcon } from './icons/SpinnerIcon';
+import { DownloadIcon } from './icons/DownloadIcon';
+import { ZoomIcon } from './icons/ZoomIcon';
+import { LOADING_MESSAGES } from '../constants';
+import type { AppMode } from '../types';
+import { ImageModal } from './ImageModal';
+
+interface ResultsDisplayProps {
+  isLoading: boolean;
+  results: string[];
+  error: string | null;
+  mode: AppMode;
+}
+
+const WelcomeState: React.FC<{mode: AppMode}> = ({mode}) => {
+  const getTitle = () => {
+    switch (mode) {
+      case 'edit': return 'Sẵn sàng biến hoá nhân vật của bạn';
+      case 'swap': return 'Hoán đổi khuôn mặt nghệ thuật';
+      case 'generate': return 'Sẵn sàng tạo nên kiệt tác';
+      case 'magic': return 'Bộ công cụ chỉnh sửa ảnh AI';
+      default: return '';
+    }
+  };
+
+  const getDescription = () => {
+    switch (mode) {
+      case 'edit': return 'Tải lên ảnh nhân vật và sản phẩm, sau đó mô tả yêu cầu của bạn để bắt đầu.';
+      case 'swap': return 'Tải ảnh khuôn mặt gốc và ảnh đích để AI thực hiện phép màu hoán đổi.';
+      case 'generate': return 'Viết một mô tả chi tiết và chọn tỷ lệ khung hình để AI tạo ra 4 kết quả độc đáo.';
+      case 'magic': return 'Tải lên một ảnh và chọn một thao tác nhanh: nâng cấp, xóa nền, hoặc tự động sửa màu.';
+      default: return '';
+    }
+  };
+
+  return (
+    <div className="text-center text-gray-400">
+      <div className="text-5xl mb-4">✨</div>
+      <h3 className="text-xl font-semibold text-white mb-2">
+        {getTitle()}
+      </h3>
+      <p>
+        {getDescription()}
+      </p>
+    </div>
+  );
+};
+
+
+const LoadingState: React.FC = () => {
+    const [message, setMessage] = useState(LOADING_MESSAGES[0]);
+
+    useEffect(() => {
+        const intervalId = setInterval(() => {
+            setMessage(prevMessage => {
+                const currentIndex = LOADING_MESSAGES.indexOf(prevMessage);
+                const nextIndex = (currentIndex + 1) % LOADING_MESSAGES.length;
+                return LOADING_MESSAGES[nextIndex];
+            });
+        }, 2500);
+
+        return () => clearInterval(intervalId);
+    }, []);
+
+    return (
+        <div className="text-center">
+            <div className="flex justify-center items-center mb-4">
+                <SpinnerIcon />
+            </div>
+            <p className="text-lg font-semibold text-white animate-pulse">{message}</p>
+        </div>
+    );
+}
+
+export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ isLoading, results, error, mode }) => {
+  const [zoomedImage, setZoomedImage] = useState<string | null>(null);
+
+  const handleDownload = (base64Image: string, index: number) => {
+    const link = document.createElement('a');
+    link.href = `data:image/jpeg;base64,${base64Image}`;
+    link.download = `generated_image_${index + 1}.jpeg`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+  
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      setZoomedImage(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (zoomedImage) {
+      window.addEventListener('keydown', handleKeyDown);
+    } else {
+      window.removeEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [zoomedImage, handleKeyDown]);
+
+  const hasResults = results.length > 0;
+  const numCols = results.length > 1 ? 'grid-cols-2' : 'grid-cols-1';
+  const itemSpan = results.length === 1 ? 'max-w-md mx-auto' : '';
+
+  return (
+    <>
+      <div className="bg-gray-800 rounded-lg p-4 sm:p-6 min-h-[60vh] flex items-center justify-center border-2 border-dashed border-gray-700">
+        {isLoading && <LoadingState />}
+        {!isLoading && error && (
+          <div className="text-center text-red-400">
+            <h3 className="text-xl font-semibold mb-2">Rất tiếc, đã có lỗi xảy ra</h3>
+            <p className="text-sm bg-red-900/50 p-3 rounded-md">{error}</p>
+          </div>
+        )}
+        {!isLoading && !error && !hasResults && <WelcomeState mode={mode} />}
+        {!isLoading && !error && hasResults && (
+          <div className={`grid ${numCols} gap-4 w-full`}>
+            {results.map((base64, index) => (
+              <div key={index} className={`relative group overflow-hidden rounded-lg shadow-lg ${itemSpan} cursor-pointer`} onClick={() => setZoomedImage(base64)}>
+                <img
+                  src={`data:image/jpeg;base64,${base64}`}
+                  alt={`Generated result ${index + 1}`}
+                  className="w-full h-full object-contain"
+                />
+                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center gap-4">
+                   <button
+                    onClick={(e) => { e.stopPropagation(); setZoomedImage(base64); }}
+                    className="p-3 bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded-full text-white transition-colors"
+                    aria-label="Zoom image"
+                  >
+                    <ZoomIcon />
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleDownload(base64, index); }}
+                    className="p-3 bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded-full text-white transition-colors"
+                    aria-label="Download image"
+                  >
+                    <DownloadIcon />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      {zoomedImage && (
+        <ImageModal 
+          imageUrl={`data:image/jpeg;base64,${zoomedImage}`}
+          onClose={() => setZoomedImage(null)}
+        />
+      )}
+    </>
+  );
+};
