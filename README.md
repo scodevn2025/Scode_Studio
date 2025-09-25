@@ -42,11 +42,11 @@ Sau khi import, Vercel sẽ hiển thị trang cấu hình. Đây là bước qu
     *   Đây là phần **quan trọng nhất** để ứng dụng của bạn hoạt động.
     *   Tìm đến mục **Environment Variables** và mở nó ra.
     *   Thêm một biến mới với thông tin sau:
-        *   **Name:** `API_KEY`
+        *   **Name:** `VITE_API_KEY`
         *   **Value:** Dán API Key của Google Gemini bạn đã lấy ở phần chuẩn bị vào đây.
     *   Nhấn **"Add"** để lưu lại.
 
-    > **Lưu ý quan trọng:** Tuyệt đối không bao giờ ghi trực tiếp API Key vào trong mã nguồn. Việc sử dụng biến môi trường của Vercel giúp bảo mật key của bạn.
+    > **Lưu ý quan trọng:** Tiền tố `VITE_` là **bắt buộc**. Đây là cách Vite (công cụ build ứng dụng này) cho phép mã nguồn phía client (trình duyệt) truy cập vào biến môi trường một cách an toàn. Nếu không có tiền tố này, ứng dụng sẽ không thể tìm thấy API Key.
 
 ### Bước 4: Triển khai
 
@@ -61,8 +61,8 @@ Chúc mừng! Ứng dụng của bạn đã được triển khai thành công l
 ## Xử lý Lỗi thường gặp
 
 *   **Lỗi `Application Error` hoặc các chức năng AI không hoạt động:**
-    *   **Nguyên nhân phổ biến nhất:** Bạn đã quên thêm biến môi trường `API_KEY` hoặc dán sai key.
-    *   **Cách khắc phục:** Vào dự án của bạn trên Vercel -> **Settings** -> **Environment Variables** và kiểm tra lại biến `API_KEY` đã được thêm chính xác chưa. Sau khi sửa, bạn cần triển khai lại (re-deploy) để áp dụng thay đổi.
+    *   **Nguyên nhân phổ biến nhất:** Bạn đã quên thêm biến môi trường `VITE_API_KEY` hoặc dán sai key.
+    *   **Cách khắc phục:** Vào dự án của bạn trên Vercel -> **Settings** -> **Environment Variables** và kiểm tra lại biến `VITE_API_KEY` đã được thêm chính xác chưa. Sau khi sửa, bạn cần triển khai lại (re-deploy) để áp dụng thay đổi.
 
 *   **Lỗi trong quá trình Build:**
     *   Đảm bảo rằng Framework Preset được chọn là **Vite**.

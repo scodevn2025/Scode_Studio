@@ -7,6 +7,7 @@ import type {
 } from '../types';
 
 // Initialize the Gemini client using the API key from environment variables.
+// FIX: Use process.env.API_KEY as per coding guidelines.
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const getQualityPromptSuffix = (quality: OutputQuality): string => {
