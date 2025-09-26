@@ -1,4 +1,4 @@
-export type AppMode = 'generate' | 'edit' | 'swap' | 'magic';
+export type AppMode = 'generate' | 'edit' | 'swap' | 'magic' | 'analyze';
 
 export type AspectRatio = '1:1' | '3:4' | '4:3' | '9:16' | '16:9';
 
@@ -20,8 +20,10 @@ export interface GenerateOptions {
 
 export interface EditOptions {
   prompt: string;
+  aspectRatio: AspectRatio;
   characterImages: ImageData[];
   productImage?: ImageData;
+  backgroundImage?: ImageData;
   numberOfVariations: number;
   quality: OutputQuality;
 }
@@ -39,6 +41,15 @@ export interface MagicOptions {
   image: ImageData;
   prompt?: string;
   quality: OutputQuality;
+}
+
+export interface AnalyzeOptions {
+  image: ImageData;
+}
+
+export interface SuggestionOptions {
+  prompt: string;
+  images?: ImageData[];
 }
 
 export interface CharacterPreset {

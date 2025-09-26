@@ -1,132 +1,139 @@
 import React, { useState, useCallback } from 'react';
 import { ControlPanel } from './components/ControlPanel';
 import { ResultsDisplay } from './components/ResultsDisplay';
-import {
-  generateImages,
-  editImage,
-  swapFace,
-  magicEditImage,
-} from './services/geminiService';
-import type {
-  AppMode,
-  GenerateOptions,
-  EditOptions,
-  SwapOptions,
-  MagicOptions,
-} from './types';
+import { LightbulbIcon } from './components/icons/LightbulbIcon';
+import * as geminiService from './services/geminiService';
+import type { AppMode, OutputQuality } from './types';
+import { useOutputQuality } from './hooks/useOutputQuality';
+import { OUTPUT_QUALITIES } from './constants';
 
-function App() {
-  const [mode, setMode] = useState<AppMode>('edit');
+const App: React.FC = () => {
+  const [mode, setMode] = useState<AppMode>('generate');
   const [isLoading, setIsLoading] = useState(false);
   const [results, setResults] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [quality, setQuality] = useOutputQuality();
 
-  const handleSubmit = useCallback(
-    async (options: GenerateOptions | EditOptions | SwapOptions | MagicOptions) => {
-      setIsLoading(true);
-      setError(null);
-      setResults([]);
+  const handleModeChange = (newMode: AppMode) => {
+    setMode(newMode);
+    setResults([]);
+    setError(null);
+  };
+  
+  const handleSubmit = useCallback(async (options: any) => {
+    setIsLoading(true);
+    setError(null);
+    setResults([]);
 
-      try {
-        let imageResults: (string | null)[] = [];
-        if (mode === 'generate') {
-          imageResults = await generateImages(options as GenerateOptions);
-        } else if (mode === 'edit') {
-          const editOptions = options as EditOptions;
-          const promises = [];
-          // For each uploaded character image, create the requested number of variations.
-          for (const characterImage of editOptions.characterImages) {
-            for (let i = 0; i < editOptions.numberOfVariations; i++) {
-              promises.push(
-                editImage({
-                  prompt: editOptions.prompt,
-                  characterImage,
-                  productImage: editOptions.productImage,
-                  quality: editOptions.quality,
-                })
-              );
-            }
-          }
-          imageResults = await Promise.all(promises);
-        } else if (mode === 'swap') {
-          const swapOptions = options as SwapOptions;
-          const promises = [];
-          for (let i = 0; i < swapOptions.numberOfVariations; i++) {
-              promises.push(
-                  swapFace({
-                      prompt: swapOptions.prompt,
-                      sourceFaceImage: swapOptions.sourceFaceImage,
-                      targetImage: swapOptions.targetImage,
-                      quality: swapOptions.quality,
-                  })
-              );
-          }
-          imageResults = await Promise.all(promises);
-        } else if (mode === 'magic') {
-          const magicOptions = options as MagicOptions;
-          const result = await magicEditImage(magicOptions);
-          imageResults = result ? [result] : [];
+    try {
+        let response: string[] | string;
+        const optionsWithQuality = { ...options, quality };
+
+        switch (mode) {
+            case 'generate':
+                response = await geminiService.generateImage(optionsWithQuality);
+                break;
+            case 'edit':
+                response = await geminiService.editImage(optionsWithQuality);
+                break;
+            case 'swap':
+                response = await geminiService.swapFaces(optionsWithQuality);
+                break;
+            case 'magic':
+                response = await geminiService.magicAction(optionsWithQuality);
+                break;
+            case 'analyze':
+                response = await geminiService.analyzeImage(optionsWithQuality);
+                break;
+            default:
+                throw new Error('Chế độ không hợp lệ');
         }
-
-        const validResults = imageResults.filter((res): res is string => res !== null);
         
-        if (validResults.length > 0) {
-            setResults(validResults);
-        } else {
-            setError("The AI couldn't generate a valid image for this request. Please try adjusting your prompt or images.");
-        }
+        setResults(Array.isArray(response) ? response : [response]);
 
-      } catch (e) {
-        console.error(e);
-        setError(e instanceof Error ? e.message : 'An unknown error occurred.');
-      } finally {
+    } catch (e: any) {
+        setError(e.message || 'Đã xảy ra lỗi không xác định.');
+    } finally {
         setIsLoading(false);
-      }
-    },
-    [mode]
-  );
+    }
+  }, [mode, quality]);
+
+  const MODES: { id: AppMode; name: string }[] = [
+      { id: 'generate', name: 'Tạo ảnh' },
+      { id: 'edit', name: 'Biến hoá' },
+      { id: 'swap', name: 'Hoán đổi' },
+      { id: 'magic', name: 'Magic Edit' },
+      { id: 'analyze', name: 'Phân tích' }
+  ];
 
   return (
-    <div className="flex flex-col min-h-screen bg-gray-900 text-white font-sans">
-      <header className="bg-gray-900/80 backdrop-blur-sm sticky w-full top-0 z-10 border-b border-gray-800">
-        <div className="max-w-7xl mx-auto py-4 px-4 sm:px-8 flex justify-between items-center">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-indigo-600">
-              AI Image Suite
-            </h1>
-            <p className="text-sm text-gray-400">Tạo, chỉnh sửa và biến đổi hình ảnh với sức mạnh của AI</p>
-          </div>
-        </div>
-      </header>
+    <div className="bg-gray-900 text-white min-h-screen font-sans">
+      <div className="container mx-auto px-4 py-8">
+        <header className="text-center mb-8">
+          <h1 className="text-4xl sm:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-indigo-600">
+            AI Image Studio
+          </h1>
+          <p className="text-gray-400 mt-2">
+            Công cụ sáng tạo hình ảnh mạnh mẽ với Gemini AI
+          </p>
+        </header>
 
-      <main className="flex-grow w-full max-w-7xl mx-auto p-4 sm:p-8">
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-8 items-start">
-          <div className="lg:col-span-2 lg:sticky lg:top-28">
-            <ControlPanel
-              mode={mode}
-              setMode={setMode}
-              onSubmit={handleSubmit}
-              isLoading={isLoading}
-            />
+        <main className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="lg:col-span-1 bg-gray-800/50 rounded-lg border border-gray-700 shadow-2xl">
+              <nav className="flex items-center justify-between border-b border-gray-700 p-2">
+                  <div className="flex flex-wrap">
+                    {MODES.map((m) => (
+                      <button
+                        key={m.id}
+                        onClick={() => handleModeChange(m.id)}
+                        className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors
+                          ${mode === m.id ? 'bg-indigo-600 text-white' : 'text-gray-300 hover:bg-gray-700'}
+                        `}
+                      >
+                        {m.name}
+                      </button>
+                    ))}
+                  </div>
+              </nav>
+              <ControlPanel 
+                mode={mode} 
+                onSubmit={handleSubmit} 
+                isLoading={isLoading}
+                quality={quality}
+              />
+               <div className="p-4 border-t border-gray-700">
+                <label htmlFor="quality-selector" className="block text-sm font-medium text-gray-300 mb-2">Chất lượng đầu ra</label>
+                <select 
+                  id="quality-selector" 
+                  value={quality} 
+                  onChange={e => setQuality(e.target.value as OutputQuality)}
+                  className="w-full bg-gray-900 border border-gray-600 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white p-2"
+                >
+                  {OUTPUT_QUALITIES.map(q => <option key={q.id} value={q.id}>{q.name}</option>)}
+                </select>
+                <div className="flex items-start text-xs text-gray-500 mt-2 p-2 bg-gray-900/50 rounded-md">
+                  <LightbulbIcon />
+                  <span className="ml-2">Chất lượng cao hơn có thể mất nhiều thời gian và chi phí hơn. Hiện tại, cài đặt này mang tính tham khảo.</span>
+                </div>
+              </div>
           </div>
-          <div className="lg:col-span-3">
-            <ResultsDisplay
-              isLoading={isLoading}
+
+          <div className="lg:col-span-2">
+            <ResultsDisplay 
+              isLoading={isLoading} 
               results={results}
               error={error}
               mode={mode}
             />
           </div>
-        </div>
-      </main>
+        </main>
 
-      <footer className="w-full bg-gray-900/80 border-t border-gray-800 mt-auto">
-        <div className="max-w-7xl mx-auto py-4 px-4 sm:px-8 text-center text-sm text-gray-500">
-          <p>Author: ScodeVN | Hotline: 0394091919</p>
-        </div>
-      </footer>
+         <footer className="text-center mt-12 text-gray-500 text-sm">
+            <p>Powered by Google Gemini. Interface designed by a world-class senior frontend engineer.</p>
+        </footer>
+      </div>
     </div>
   );
-}
+};
 
 export default App;

@@ -1,36 +1,28 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import type { OutputQuality } from '../types';
 
-const STORAGE_KEY = 'output-quality';
+const QUALITY_STORAGE_KEY = 'ai-output-quality';
 
-const isValidQuality = (value: any): value is OutputQuality => {
-  return ['standard', 'high', 'maximum'].includes(value);
-};
-
-export const useOutputQuality = (): [OutputQuality, (quality: OutputQuality) => void] => {
-  const [quality, setQuality] = useState<OutputQuality>('high'); // Default to 'high'
+export function useOutputQuality(): [OutputQuality, (quality: OutputQuality) => void] {
+  const [quality, setQuality] = useState<OutputQuality>(() => {
+    try {
+      const storedQuality = localStorage.getItem(QUALITY_STORAGE_KEY);
+      if (storedQuality && ['standard', 'high', 'maximum'].includes(storedQuality)) {
+        return storedQuality as OutputQuality;
+      }
+    } catch (error) {
+      console.error('Failed to load quality from local storage:', error);
+    }
+    return 'standard'; // Default value
+  });
 
   useEffect(() => {
     try {
-      const storedQuality = localStorage.getItem(STORAGE_KEY);
-      if (storedQuality && isValidQuality(storedQuality)) {
-        setQuality(storedQuality);
-      }
+        localStorage.setItem(QUALITY_STORAGE_KEY, quality);
     } catch (error) {
-      console.error("Failed to load output quality from localStorage", error);
+        console.error('Failed to save quality to local storage:', error);
     }
-  }, []);
+  }, [quality]);
 
-  const updateQuality = useCallback((newQuality: OutputQuality) => {
-    try {
-      if (isValidQuality(newQuality)) {
-        setQuality(newQuality);
-        localStorage.setItem(STORAGE_KEY, newQuality);
-      }
-    } catch (error) {
-      console.error("Failed to save output quality to localStorage", error);
-    }
-  }, []);
-
-  return [quality, updateQuality];
-};
+  return [quality, setQuality];
+}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { SpinnerIcon } from './icons/SpinnerIcon';
 import { DownloadIcon } from './icons/DownloadIcon';
 import { ZoomIcon } from './icons/ZoomIcon';
@@ -20,6 +20,7 @@ const WelcomeState: React.FC<{mode: AppMode}> = ({mode}) => {
       case 'swap': return 'Hoán đổi khuôn mặt nghệ thuật';
       case 'generate': return 'Sẵn sàng tạo nên kiệt tác';
       case 'magic': return 'Bộ công cụ chỉnh sửa ảnh AI';
+      case 'analyze': return 'Phân tích hình ảnh bằng AI';
       default: return '';
     }
   };
@@ -30,6 +31,7 @@ const WelcomeState: React.FC<{mode: AppMode}> = ({mode}) => {
       case 'swap': return 'Tải ảnh khuôn mặt gốc và ảnh đích để AI thực hiện phép màu hoán đổi.';
       case 'generate': return 'Viết một mô tả chi tiết và chọn tỷ lệ khung hình để AI tạo ra 4 kết quả độc đáo.';
       case 'magic': return 'Tải lên một ảnh và chọn một thao tác nhanh: nâng cấp, xóa nền, hoặc tự động sửa màu.';
+      case 'analyze': return 'Tải lên một hình ảnh và AI sẽ cung cấp một mô tả chi tiết, hoàn hảo để sử dụng làm prompt.';
       default: return '';
     }
   };
@@ -72,6 +74,50 @@ const LoadingState: React.FC = () => {
         </div>
     );
 }
+
+const AnalyzedTextResult: React.FC<{ text: string }> = ({ text }) => {
+  const [copied, setCopied] = useState(false);
+  const textAreaRef = useRef<HTMLTextAreaElement>(null);
+
+  const handleCopy = () => {
+    if (!navigator.clipboard) {
+        alert("Clipboard API not available");
+        return;
+    }
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  const handleSelectAndCopy = () => {
+    textAreaRef.current?.select();
+    handleCopy();
+  }
+
+  return (
+    <div className="w-full max-w-2xl mx-auto text-left space-y-4">
+        <h3 className="text-xl font-semibold text-white">Mô tả từ AI</h3>
+        <div className="relative">
+            <textarea
+                ref={textAreaRef}
+                readOnly
+                value={text}
+                className="w-full h-48 p-3 bg-gray-900 border border-gray-700 rounded-md shadow-sm text-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm resize-none"
+                aria-label="Generated prompt"
+            />
+        </div>
+        <div className="flex justify-end gap-3">
+             <button
+                onClick={handleSelectAndCopy}
+                className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-gray-900"
+            >
+                {copied ? 'Đã sao chép!' : 'Chọn & Sao chép'}
+            </button>
+        </div>
+    </div>
+  );
+};
 
 export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ isLoading, results, error, mode }) => {
   const [zoomedImage, setZoomedImage] = useState<string | null>(null);
@@ -118,33 +164,37 @@ export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ isLoading, resul
         )}
         {!isLoading && !error && !hasResults && <WelcomeState mode={mode} />}
         {!isLoading && !error && hasResults && (
-          <div className={`grid ${numCols} gap-4 w-full`}>
-            {results.map((base64, index) => (
-              <div key={index} className={`relative group overflow-hidden rounded-lg shadow-lg ${itemSpan} cursor-pointer`} onClick={() => setZoomedImage(base64)}>
-                <img
-                  src={`data:image/jpeg;base64,${base64}`}
-                  alt={`Generated result ${index + 1}`}
-                  className="w-full h-full object-contain"
-                />
-                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center gap-4">
-                   <button
-                    onClick={(e) => { e.stopPropagation(); setZoomedImage(base64); }}
-                    className="p-3 bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded-full text-white transition-colors"
-                    aria-label="Zoom image"
-                  >
-                    <ZoomIcon />
-                  </button>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleDownload(base64, index); }}
-                    className="p-3 bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded-full text-white transition-colors"
-                    aria-label="Download image"
-                  >
-                    <DownloadIcon />
-                  </button>
+            mode === 'analyze' && results[0] ? (
+                <AnalyzedTextResult text={results[0]} />
+            ) : (
+                <div className={`grid ${numCols} gap-4 w-full`}>
+                    {results.map((base64, index) => (
+                    <div key={index} className={`relative group overflow-hidden rounded-lg shadow-lg ${itemSpan} cursor-pointer`} onClick={() => setZoomedImage(base64)}>
+                        <img
+                        src={`data:image/jpeg;base64,${base64}`}
+                        alt={`Generated result ${index + 1}`}
+                        className="w-full h-full object-contain"
+                        />
+                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center gap-4">
+                        <button
+                            onClick={(e) => { e.stopPropagation(); setZoomedImage(base64); }}
+                            className="p-3 bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded-full text-white transition-colors"
+                            aria-label="Zoom image"
+                        >
+                            <ZoomIcon />
+                        </button>
+                        <button
+                            onClick={(e) => { e.stopPropagation(); handleDownload(base64, index); }}
+                            className="p-3 bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded-full text-white transition-colors"
+                            aria-label="Download image"
+                        >
+                            <DownloadIcon />
+                        </button>
+                        </div>
+                    </div>
+                    ))}
                 </div>
-              </div>
-            ))}
-          </div>
+            )
         )}
       </div>
       {zoomedImage && (

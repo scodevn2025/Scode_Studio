@@ -1,382 +1,395 @@
-// FIX: Implemented the ControlPanel component with mode selection and forms for image generation, editing, and face swapping.
-import React, { useState, useEffect } from 'react';
-import { ImageUploader } from './ImageUploader';
-import { useCharacterPresets } from '../hooks/useCharacterPresets';
-import { useOutputQuality } from '../hooks/useOutputQuality';
-import { analyzeImageAndGetPrompt } from '../services/geminiService';
-import type { AppMode, GenerateOptions, EditOptions, SwapOptions, AspectRatio, ImageData, MagicAction, MagicOptions, OutputQuality } from '../types';
-import { ASPECT_RATIOS, PREDEFINED_PROMPTS } from '../constants';
+import React, { useState, useEffect, useMemo } from 'react';
+import type { AppMode, GenerateOptions, EditOptions, SwapOptions, MagicOptions, AnalyzeOptions, AspectRatio, MagicAction, ImageData, OutputQuality } from '../types';
+import { ASPECT_RATIOS, MAGIC_ACTIONS, PROMPT_SUGGESTION_TAGS } from '../constants';
+import { ImageUploader, MultiImageUploader } from './ImageUploader';
 import { SpinnerIcon } from './icons/SpinnerIcon';
-import { SaveIcon } from './icons/SaveIcon';
-import { TrashIcon } from './icons/TrashIcon';
 import { SparklesIcon } from './icons/SparklesIcon';
-
+import * as geminiService from '../services/geminiService';
 
 interface ControlPanelProps {
   mode: AppMode;
-  setMode: (mode: AppMode) => void;
-  onSubmit: (options: GenerateOptions | EditOptions | SwapOptions | MagicOptions) => void;
+  onSubmit: (options: any) => void;
   isLoading: boolean;
+  quality: OutputQuality;
 }
 
-const ModeSelector: React.FC<{ mode: AppMode; setMode: (mode: AppMode) => void; }> = ({ mode, setMode }) => {
-  const modes: { id: AppMode, label: string }[] = [
-    { id: 'edit', label: 'Ghép nhân vật' },
-    { id: 'swap', label: 'Hoán đổi mặt' },
-    { id: 'magic', label: 'Chỉnh sửa nhanh' },
-    { id: 'generate', label: 'Tạo ảnh mới' },
-  ];
+const PromptSuggestions: React.FC<{prompt: string, images?: ImageData[], onSelect: (suggestion: string) => void}> = ({ prompt, images, onSelect }) => {
+    const [suggestions, setSuggestions] = useState<string[]>([]);
+    const [isSuggesting, setIsSuggesting] = useState(false);
+    
+    const handleSuggest = async () => {
+        if (!prompt.trim()) {
+            alert("Vui lòng nhập ý tưởng ban đầu để nhận gợi ý.");
+            return;
+        }
+        setIsSuggesting(true);
+        try {
+            const result = await geminiService.generatePromptSuggestions({ prompt, images });
+            setSuggestions(result);
+        } catch (error) {
+            console.error(error);
+            alert("Không thể tạo gợi ý. Vui lòng thử lại.");
+        } finally {
+            setIsSuggesting(false);
+        }
+    };
 
-  return (
-    <div className="grid grid-cols-2 bg-gray-800 rounded-lg p-1 gap-1">
-      {modes.map((m) => (
-        <button
-          key={m.id}
-          onClick={() => setMode(m.id)}
-          className={`w-full px-3 py-2 text-sm font-medium rounded-md transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-900
-            ${mode === m.id
-              ? 'bg-indigo-600 text-white shadow'
-              : 'text-gray-300 hover:bg-gray-700'
-            }`}
+    if (suggestions.length > 0) {
+        return (
+            <div className="mt-2 space-y-2">
+                <p className="text-xs text-gray-400">Gợi ý từ AI:</p>
+                {suggestions.map((s, i) => (
+                     <div key={i} onClick={() => onSelect(s)} className="p-2 bg-gray-700/50 rounded-md text-sm text-gray-300 cursor-pointer hover:bg-gray-700">
+                        {s}
+                    </div>
+                ))}
+            </div>
+        )
+    }
+
+    return (
+        <button 
+            type="button" 
+            onClick={handleSuggest}
+            disabled={isSuggesting}
+            className="mt-2 w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-gray-900 disabled:bg-indigo-400 disabled:cursor-not-allowed"
         >
-          {m.label}
+            {isSuggesting ? <SpinnerIcon /> : <SparklesIcon />}
+            <span className="ml-2">{isSuggesting ? "Đang lấy gợi ý..." : "Gợi ý Prompt"}</span>
         </button>
-      ))}
-    </div>
-  );
+    );
 };
 
-const QualitySelector: React.FC<{ quality: OutputQuality; setQuality: (quality: OutputQuality) => void; }> = ({ quality, setQuality }) => {
-  const qualities: { id: OutputQuality, label: string }[] = [
-    { id: 'standard', label: 'Tiêu chuẩn' },
-    { id: 'high', label: 'Chất lượng cao' },
-    { id: 'maximum', label: 'Tối đa' },
-  ];
-  return (
-    <div>
-      <label className="block text-sm font-medium text-gray-300 mb-2">Chất lượng ảnh xuất</label>
-      <div className="grid grid-cols-3 bg-gray-900 rounded-lg p-1 gap-1">
-        {qualities.map((q) => (
-          <button
-            key={q.id}
-            type="button"
-            onClick={() => setQuality(q.id)}
-            className={`w-full px-3 py-2 text-sm font-medium rounded-md transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-900 ${
-              quality === q.id
-                ? 'bg-indigo-600 text-white shadow'
-                : 'text-gray-300 hover:bg-gray-700'
-            }`}
-          >
-            {q.label}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
+const PromptAssistant: React.FC<{ onTagClick: (tag: string) => void }> = ({ onTagClick }) => {
+    return (
+        <div className="mt-2">
+            <p className="text-xs text-gray-400 mb-1">Thêm chi tiết:</p>
+            {Object.entries(PROMPT_SUGGESTION_TAGS).map(([category, tags]) => (
+                <div key={category} className="mb-2">
+                    <p className="text-xs font-semibold text-gray-300">{category}</p>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                        {tags.map(tag => (
+                            <button
+                                key={tag}
+                                type="button"
+                                onClick={() => onTagClick(tag)}
+                                className="px-2 py-0.5 bg-gray-700 text-xs text-gray-300 rounded-full hover:bg-gray-600 transition-colors"
+                            >
+                                + {tag}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            ))}
+        </div>
+    );
 };
 
-const PromptSuggestions: React.FC<{ mode: AppMode; onSelect: (value: string) => void }> = ({ mode, onSelect }) => (
-  <div className="flex flex-wrap gap-2 mt-2">
-    {PREDEFINED_PROMPTS[mode].slice(0, 6).map((prompt, index) => (
-      <button
-        key={index}
-        type="button"
-        onClick={() => onSelect(prompt.value)}
-        className="px-2 py-1 bg-gray-700 text-xs text-gray-300 rounded-full hover:bg-gray-600 transition-colors"
-      >
-        {prompt.name}
-      </button>
-    ))}
-  </div>
-);
 
-export const ControlPanel: React.FC<ControlPanelProps> = ({ mode, setMode, onSubmit, isLoading }) => {
-  // Common state
+const GenerateForm: React.FC<Omit<ControlPanelProps, 'mode' | 'quality'>> = ({ onSubmit, isLoading }) => {
   const [prompt, setPrompt] = useState('');
-  const [quality, setQuality] = useOutputQuality();
-
-  // Generate state
-  const [aspectRatio, setAspectRatio] = useState<AspectRatio>('9:16');
+  const [aspectRatio, setAspectRatio] = useState<AspectRatio>('1:1');
   const [numberOfImages, setNumberOfImages] = useState(4);
-
-  // Edit state
-  const [characterImages, setCharacterImages] = useState<ImageData[]>([]);
-  const [productImage, setProductImage] = useState<ImageData[]>([]);
-  const [numberOfVariations, setNumberOfVariations] = useState(1);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-
-  // Swap state
-  const [sourceFaceImage, setSourceFaceImage] = useState<ImageData[]>([]);
-  const [targetImage, setTargetImage] = useState<ImageData[]>([]);
-
-  // Magic Edit state
-  const [magicAction, setMagicAction] = useState<MagicAction>('upscale');
-  const [magicImage, setMagicImage] = useState<ImageData[]>([]);
-
-  // Character presets for Edit mode
-  const { presets, addPreset, removePreset } = useCharacterPresets();
-  const [presetName, setPresetName] = useState('');
-  const [selectedPresetId, setSelectedPresetId] = useState<string>('');
-  
-  useEffect(() => {
-    // Reset inputs when mode changes
-    setPrompt('');
-    setCharacterImages([]);
-    setProductImage([]);
-    setSourceFaceImage([]);
-    setTargetImage([]);
-    setMagicImage([]);
-    setSelectedPresetId('');
-    setPresetName('');
-    setNumberOfVariations(1);
-  }, [mode]);
-
-  const handlePresetChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const id = e.target.value;
-    setSelectedPresetId(id);
-    const selected = presets.find(p => p.id === id);
-    if (selected) {
-      setCharacterImages(selected.images);
-      setPrompt(selected.prompt || '');
-    } else {
-      setCharacterImages([]);
-      setPrompt('');
-    }
-  };
-
-  const handleSavePreset = () => {
-    if (presetName && characterImages.length > 0) {
-      addPreset(presetName, characterImages, prompt);
-      setPresetName('');
-      alert(`Đã lưu preset '${presetName}'!`);
-    } else {
-      alert('Vui lòng nhập tên và tải lên ít nhất một ảnh nhân vật.');
-    }
-  };
-  
-  const handleAnalyzeImage = async () => {
-    if (isLoading || isAnalyzing || !characterImages[0]) return;
-    setIsAnalyzing(true);
-    try {
-      const newPrompt = await analyzeImageAndGetPrompt(characterImages[0]);
-      if (newPrompt) {
-        setPrompt(newPrompt);
-      } else {
-        alert("Không thể phân tích ảnh. AI không trả về mô tả.");
-      }
-    } catch (error) {
-      console.error("Analysis failed:", error);
-      alert("Đã xảy ra lỗi khi phân tích ảnh.");
-    } finally {
-      setIsAnalyzing(false);
-    }
-  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (isLoading) return;
-
-    if (mode === 'generate') {
-      onSubmit({ prompt, aspectRatio, numberOfImages, quality } as GenerateOptions);
-    } else if (mode === 'edit') {
-      if (characterImages.length === 0) {
-        alert('Vui lòng tải lên ít nhất một ảnh nhân vật.');
+    if (!prompt.trim()) {
+        alert("Vui lòng nhập mô tả.");
         return;
-      }
-      onSubmit({ prompt, characterImages, productImage: productImage[0], numberOfVariations, quality } as EditOptions);
-    } else if (mode === 'swap') {
-      if (!sourceFaceImage[0] || !targetImage[0]) {
-        alert('Vui lòng tải lên ảnh khuôn mặt nguồn và ảnh đích.');
-        return;
-      }
-      onSubmit({ prompt, sourceFaceImage: sourceFaceImage[0], targetImage: targetImage[0], numberOfVariations, quality } as SwapOptions);
-    } else if (mode === 'magic') {
-        if (!magicImage[0]) {
-            alert('Vui lòng tải lên ảnh để chỉnh sửa.');
-            return;
-        }
-        if ((magicAction === 'remove-object' || magicAction === 'change-background') && !prompt.trim()) {
-            alert('Vui lòng nhập mô tả cho thao tác này.');
-            return;
-        }
-        onSubmit({ action: magicAction, image: magicImage[0], prompt, quality } as MagicOptions);
     }
+    const options: Omit<GenerateOptions, 'quality'> = { prompt, aspectRatio, numberOfImages };
+    onSubmit(options);
   };
 
-  const isSubmitDisabled = isLoading || (mode === 'edit' && characterImages.length === 0) || (mode === 'swap' && (sourceFaceImage.length === 0 || targetImage.length === 0)) || (mode === 'magic' && magicImage.length === 0);
-  
-  const actionsRequiringPrompt: MagicAction[] = ['remove-object', 'change-background'];
-  const hasPrompt = mode !== 'magic' || actionsRequiringPrompt.includes(magicAction);
-
-  const getPromptLabel = () => {
-    if (mode === 'magic') {
-        if (magicAction === 'remove-object') return 'Mô tả vật thể cần xóa';
-        if (magicAction === 'change-background') return 'Mô tả nền mới';
-    }
-    return 'Yêu cầu của bạn';
-  };
-
-  const getPromptPlaceholder = () => {
-     if (mode === 'generate') return 'Mô tả nhân vật và bối cảnh bạn muốn tạo...';
-     if (mode === 'edit') return 'Nhân vật đang làm gì, ở đâu, trang phục...';
-     if (mode === 'swap') return 'Mô tả thêm cho việc hoán đổi, ví dụ: "cười tươi", "nhìn thẳng"...';
-     if (mode === 'magic') {
-        if (magicAction === 'remove-object') return 'Ví dụ: "chiếc ô màu đỏ", "người đàn ông ở phía sau"';
-        if (magicAction === 'change-background') return 'Ví dụ: "một bãi biển nhiệt đới vào lúc hoàng hôn", "phố đêm Tokyo với đèn neon"';
-     }
-     return '';
-  };
+  const handleTagClick = (tag: string) => {
+      setPrompt(p => p ? `${p}, ${tag}` : tag);
+  }
 
   return (
-    <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-lg p-4 sm:p-6 space-y-6">
-      <ModeSelector mode={mode} setMode={setMode} />
-      <QualitySelector quality={quality} setQuality={setQuality} />
-      <form onSubmit={handleSubmit} className="space-y-6">
-        
-        {mode === 'edit' && (
-          <>
-            <ImageUploader
-              label="1. Tải ảnh nhân vật (có thể tải nhiều)"
-              onUpload={setCharacterImages}
-              uploadedImages={characterImages}
-              multiple
-            />
-            {characterImages.length > 0 && (
-              <button
-                type="button"
-                onClick={handleAnalyzeImage}
-                disabled={isLoading || isAnalyzing}
-                className="w-full flex justify-center items-center gap-2 py-2 px-4 border border-indigo-500/50 text-indigo-300 rounded-md shadow-sm text-sm font-medium hover:bg-indigo-500/10 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-gray-900 disabled:bg-gray-700/50 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors"
-              >
-                {isAnalyzing ? <SpinnerIcon /> : <SparklesIcon />}
-                <span>{isAnalyzing ? 'Đang phân tích...' : 'Phân tích ảnh & Lấy gợi ý'}</span>
-              </button>
-            )}
-             <div className="space-y-4 p-4 bg-gray-900/50 rounded-lg">
-                <label className="block text-sm font-medium text-gray-300">2. Quản lý nhân vật (tùy chọn)</label>
-                <div className="flex gap-2">
-                    <select value={selectedPresetId} onChange={handlePresetChange} className="flex-grow bg-gray-800 border-gray-700 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
-                        <option value="">-- Chọn nhân vật có sẵn --</option>
-                        {presets.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                    </select>
-                    {selectedPresetId && <button type="button" onClick={() => removePreset(selectedPresetId)} className="p-2 bg-red-600/50 hover:bg-red-600 rounded-md text-white"><TrashIcon /></button>}
-                </div>
-                 <div className="flex gap-2">
-                    <input type="text" value={presetName} onChange={(e) => setPresetName(e.target.value)} placeholder="Tên nhân vật mới..." className="flex-grow bg-gray-800 border border-gray-700 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" />
-                    <button type="button" onClick={handleSavePreset} className="p-2 bg-indigo-600/50 hover:bg-indigo-600 rounded-md text-white" disabled={!presetName || characterImages.length === 0}><SaveIcon /></button>
-                 </div>
-             </div>
-            <ImageUploader
-              label="3. Tải ảnh sản phẩm (tùy chọn)"
-              onUpload={setProductImage}
-              uploadedImages={productImage}
-            />
-          </>
-        )}
-        
-        {hasPrompt && (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div>
+        <label htmlFor="prompt-generate" className="block text-sm font-medium text-gray-300 mb-2">Mô tả (Prompt)</label>
+        <textarea
+          id="prompt-generate"
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          rows={5}
+          className="w-full bg-gray-900 border border-gray-600 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white p-2"
+          placeholder="VD: một chú mèo phi hành gia đang lướt ván trong vũ trụ, phong cách nghệ thuật số"
+        />
+        <PromptAssistant onTagClick={handleTagClick} />
+        <PromptSuggestions prompt={prompt} onSelect={setPrompt} />
+      </div>
+      
+      <div>
+        <label className="block text-sm font-medium text-gray-300 mb-2">Tỷ lệ khung hình</label>
+        <div className="grid grid-cols-5 gap-2">
+          {ASPECT_RATIOS.map((ratio) => (
+            <button
+              type="button"
+              key={ratio}
+              onClick={() => setAspectRatio(ratio)}
+              className={`p-2 border rounded-md text-xs transition-colors ${
+                aspectRatio === ratio ? 'bg-indigo-600 border-indigo-500' : 'bg-gray-700 border-gray-600 hover:bg-gray-600'
+              }`}
+            >
+              {ratio}
+            </button>
+          ))}
+        </div>
+      </div>
+
+       <div>
+          <label htmlFor="numberOfImages" className="block text-sm font-medium text-gray-300 mb-2">Số lượng ảnh: {numberOfImages}</label>
+          <input
+            type="range"
+            id="numberOfImages"
+            min="1"
+            max="4"
+            value={numberOfImages}
+            onChange={e => setNumberOfImages(Number(e.target.value))}
+            className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+          />
+       </div>
+
+      <button
+        type="submit"
+        disabled={isLoading || !prompt.trim()}
+        className="w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-gray-900 disabled:bg-indigo-400 disabled:cursor-not-allowed"
+      >
+        {isLoading && <SpinnerIcon />}
+        {isLoading ? 'Đang tạo...' : 'Tạo ảnh'}
+      </button>
+    </form>
+  );
+};
+
+const EditForm: React.FC<Omit<ControlPanelProps, 'mode' | 'quality'>> = ({ onSubmit, isLoading }) => {
+    const [prompt, setPrompt] = useState('');
+    const [aspectRatio, setAspectRatio] = useState<AspectRatio>('1:1');
+    const [characterImages, setCharacterImages] = useState<ImageData[]>([]);
+    const [productImage, setProductImage] = useState<ImageData | null>(null);
+    const [backgroundImage, setBackgroundImage] = useState<ImageData | null>(null);
+    const [numberOfVariations, setNumberOfVariations] = useState(2);
+    
+    const allImages = useMemo(() => {
+        const images = [...characterImages];
+        if (productImage) images.push(productImage);
+        if (backgroundImage) images.push(backgroundImage);
+        return images;
+    }, [characterImages, productImage, backgroundImage]);
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!prompt.trim()) {
+            alert("Vui lòng nhập mô tả.");
+            return;
+        }
+        if (characterImages.length === 0) {
+            alert("Vui lòng tải lên ít nhất một ảnh nhân vật.");
+            return;
+        }
+        const options: Omit<EditOptions, 'quality'> = { prompt, aspectRatio, characterImages, productImage: productImage || undefined, backgroundImage: backgroundImage || undefined, numberOfVariations };
+        onSubmit(options);
+    };
+    
+    const handleTagClick = (tag: string) => {
+        setPrompt(p => p ? `${p}, ${tag}` : tag);
+    }
+
+    return (
+      <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label htmlFor="prompt" className="block text-sm font-medium text-gray-300">
-              {getPromptLabel()}
-            </label>
+            <label htmlFor="prompt-edit" className="block text-sm font-medium text-gray-300 mb-2">Mô tả yêu cầu</label>
             <textarea
-              id="prompt"
-              rows={mode === 'magic' ? 2 : 4}
+              id="prompt-edit"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              className="mt-1 block w-full bg-gray-900 border border-gray-700 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-              placeholder={getPromptPlaceholder()}
-              required={mode !== 'magic'}
+              rows={4}
+              className="w-full bg-gray-900 border border-gray-600 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white p-2"
+              placeholder="VD: đặt nhân vật đứng cạnh sản phẩm trên một bãi biển lúc hoàng hôn"
             />
-            {mode !== 'magic' && <PromptSuggestions mode={mode} onSelect={(value) => setPrompt(current => `${current} ${value}`.trim())} />}
+            <PromptAssistant onTagClick={handleTagClick} />
+            <PromptSuggestions prompt={prompt} images={allImages} onSelect={setPrompt} />
           </div>
-        )}
-
-        {mode === 'generate' && (
-          <div>
-            <label htmlFor="aspectRatio" className="block text-sm font-medium text-gray-300">
-              Tỷ lệ khung hình
-            </label>
-            <select
-              id="aspectRatio"
-              value={aspectRatio}
-              onChange={(e) => setAspectRatio(e.target.value as AspectRatio)}
-              className="mt-1 block w-full bg-gray-900 border-gray-700 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-            >
-              {ASPECT_RATIOS.map(ratio => <option key={ratio} value={ratio}>{ratio}</option>)}
-            </select>
+          
+          <MultiImageUploader label="Ảnh nhân vật (tối đa 4)" images={characterImages} onImagesChange={setCharacterImages} limit={4} />
+          <div className="grid grid-cols-2 gap-4">
+            <ImageUploader label="Ảnh sản phẩm" image={productImage} onImageChange={setProductImage} />
+            <ImageUploader label="Ảnh nền" image={backgroundImage} onImageChange={setBackgroundImage} />
           </div>
-        )}
 
-        {mode === 'swap' && (
-          <>
-            <ImageUploader
-              label="1. Ảnh khuôn mặt nguồn"
-              onUpload={setSourceFaceImage}
-              uploadedImages={sourceFaceImage}
-            />
-            <ImageUploader
-              label="2. Ảnh đích (để ghép mặt vào)"
-              onUpload={setTargetImage}
-              uploadedImages={targetImage}
-            />
-          </>
-        )}
-
-        {mode === 'magic' && (
-          <div className="space-y-4">
-            <ImageUploader
-              label="1. Tải ảnh cần chỉnh sửa"
-              onUpload={setMagicImage}
-              uploadedImages={magicImage}
-            />
-            <div>
-               <label className="block text-sm font-medium text-gray-300 mb-2">2. Chọn thao tác</label>
-               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  <button type="button" onClick={() => setMagicAction('upscale')} className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${magicAction === 'upscale' ? 'bg-indigo-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}>Nâng cấp</button>
-                  <button type="button" onClick={() => setMagicAction('remove-background')} className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${magicAction === 'remove-background' ? 'bg-indigo-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}>Xoá nền</button>
-                  <button type="button" onClick={() => setMagicAction('color-correct')} className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${magicAction === 'color-correct' ? 'bg-indigo-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}>Sửa màu</button>
-                  <button type="button" onClick={() => setMagicAction('beautify-portrait')} className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${magicAction === 'beautify-portrait' ? 'bg-indigo-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}>Làm đẹp</button>
-                  <button type="button" onClick={() => setMagicAction('remove-object')} className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${magicAction === 'remove-object' ? 'bg-indigo-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}>Xóa vật thể</button>
-                  <button type="button" onClick={() => setMagicAction('change-background')} className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${magicAction === 'change-background' ? 'bg-indigo-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}>Đổi nền</button>
-               </div>
-            </div>
+           <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Tỷ lệ khung hình</label>
+              <div className="grid grid-cols-5 gap-2">
+                {ASPECT_RATIOS.map((ratio) => (
+                  <button type="button" key={ratio} onClick={() => setAspectRatio(ratio)} className={`p-2 border rounded-md text-xs transition-colors ${aspectRatio === ratio ? 'bg-indigo-600 border-indigo-500' : 'bg-gray-700 border-gray-600 hover:bg-gray-600'}`}>
+                    {ratio}
+                  </button>
+                ))}
+              </div>
           </div>
-        )}
+          
+           <div>
+              <label htmlFor="numberOfVariations" className="block text-sm font-medium text-gray-300 mb-2">Số phiên bản: {numberOfVariations}</label>
+              <input type="range" id="numberOfVariations" min="1" max="4" value={numberOfVariations} onChange={e => setNumberOfVariations(Number(e.target.value))} className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer" />
+           </div>
 
-        {(mode === 'edit' || mode === 'swap') && (
-            <div>
-              <label htmlFor="variations" className="block text-sm font-medium text-gray-300">
-                Số phiên bản ({numberOfVariations})
-              </label>
-              <input
-                id="variations"
-                type="range"
-                min="1"
-                max="4"
-                value={numberOfVariations}
-                onChange={(e) => setNumberOfVariations(Number(e.target.value))}
-                className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
-              />
-            </div>
-        )}
-
-
-        <button
-          type="submit"
-          disabled={isSubmitDisabled}
-          className="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-gray-900 disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
-        >
-          {isLoading ? (
-            <>
-              <SpinnerIcon />
-              Đang xử lý...
-            </>
-          ) : (
-            'Tạo ảnh'
-          )}
-        </button>
+          <button type="submit" disabled={isLoading || !prompt.trim() || characterImages.length === 0} className="w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-gray-900 disabled:bg-indigo-400 disabled:cursor-not-allowed">
+            {isLoading && <SpinnerIcon />}
+            {isLoading ? 'Đang xử lý...' : 'Thực hiện'}
+          </button>
       </form>
-    </div>
-  );
+    );
+};
+
+const SwapForm: React.FC<Omit<ControlPanelProps, 'mode' | 'quality'>> = ({ onSubmit, isLoading }) => {
+    const [prompt, setPrompt] = useState('');
+    const [sourceFaceImage, setSourceFaceImage] = useState<ImageData | null>(null);
+    const [targetImage, setTargetImage] = useState<ImageData | null>(null);
+    const [numberOfVariations, setNumberOfVariations] = useState(1);
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!sourceFaceImage || !targetImage) {
+            alert("Vui lòng tải lên cả ảnh khuôn mặt gốc và ảnh đích.");
+            return;
+        }
+        const options: Omit<SwapOptions, 'quality'> = { prompt, sourceFaceImage, targetImage, numberOfVariations };
+        onSubmit(options);
+    };
+
+    return (
+      <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <ImageUploader label="Ảnh khuôn mặt gốc" image={sourceFaceImage} onImageChange={setSourceFaceImage} />
+            <ImageUploader label="Ảnh đích" image={targetImage} onImageChange={setTargetImage} />
+          </div>
+          <div>
+            <label htmlFor="prompt-swap" className="block text-sm font-medium text-gray-300 mb-2">Yêu cầu thêm (tùy chọn)</label>
+            <textarea
+              id="prompt-swap"
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              rows={2}
+              className="w-full bg-gray-900 border border-gray-600 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white p-2"
+              placeholder="VD: thay đổi màu tóc thành màu xanh"
+            />
+          </div>
+           <div>
+              <label htmlFor="numVariationsSwap" className="block text-sm font-medium text-gray-300 mb-2">Số phiên bản: {numberOfVariations}</label>
+              <input type="range" id="numVariationsSwap" min="1" max="4" value={numberOfVariations} onChange={e => setNumberOfVariations(Number(e.target.value))} className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer" />
+           </div>
+          <button type="submit" disabled={isLoading || !sourceFaceImage || !targetImage} className="w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-gray-900 disabled:bg-indigo-400 disabled:cursor-not-allowed">
+            {isLoading && <SpinnerIcon />}
+            {isLoading ? 'Đang hoán đổi...' : 'Hoán đổi khuôn mặt'}
+          </button>
+      </form>
+    );
+};
+
+const MagicForm: React.FC<Omit<ControlPanelProps, 'mode' | 'quality'>> = ({ onSubmit, isLoading }) => {
+    const [action, setAction] = useState<MagicAction>('upscale');
+    const [image, setImage] = useState<ImageData | null>(null);
+    const [prompt, setPrompt] = useState('');
+    
+    const needsPrompt = action === 'remove-object' || action === 'change-background';
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!image) {
+            alert("Vui lòng tải lên ảnh để chỉnh sửa.");
+            return;
+        }
+        if (needsPrompt && !prompt.trim()) {
+            alert("Vui lòng nhập mô tả cho hành động này.");
+            return;
+        }
+        const options: Omit<MagicOptions, 'quality'> = { action, image, prompt: needsPrompt ? prompt : undefined };
+        onSubmit(options);
+    };
+
+    return (
+        <form onSubmit={handleSubmit} className="space-y-4">
+            <ImageUploader label="Tải ảnh cần chỉnh sửa" image={image} onImageChange={setImage} />
+            
+             <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Hành động</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {MAGIC_ACTIONS.map((act) => (
+                    <button type="button" key={act.id} onClick={() => setAction(act.id)} className={`p-2 border rounded-md text-xs transition-colors text-center ${action === act.id ? 'bg-indigo-600 border-indigo-500' : 'bg-gray-700 border-gray-600 hover:bg-gray-600'}`}>
+                      {act.name}
+                    </button>
+                  ))}
+                </div>
+            </div>
+
+            {needsPrompt && (
+                 <div>
+                    <label htmlFor="prompt-magic" className="block text-sm font-medium text-gray-300 mb-2">
+                        {action === 'remove-object' ? 'Mô tả vật thể cần xóa' : 'Mô tả nền mới'}
+                    </label>
+                    <textarea
+                      id="prompt-magic"
+                      value={prompt}
+                      onChange={(e) => setPrompt(e.target.value)}
+                      rows={2}
+                      className="w-full bg-gray-900 border border-gray-600 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white p-2"
+                      placeholder={action === 'remove-object' ? 'VD: chiếc ô màu đỏ' : 'VD: một khu rừng huyền ảo'}
+                    />
+                  </div>
+            )}
+
+            <button type="submit" disabled={isLoading || !image || (needsPrompt && !prompt.trim())} className="w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-gray-900 disabled:bg-indigo-400 disabled:cursor-not-allowed">
+              {isLoading && <SpinnerIcon />}
+              {isLoading ? 'Đang xử lý...' : 'Áp dụng Magic'}
+            </button>
+        </form>
+    );
+};
+
+
+const AnalyzeForm: React.FC<Omit<ControlPanelProps, 'mode' | 'quality'>> = ({ onSubmit, isLoading }) => {
+    const [image, setImage] = useState<ImageData | null>(null);
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!image) {
+            alert("Vui lòng tải lên ảnh để phân tích.");
+            return;
+        }
+        const options: Omit<AnalyzeOptions, 'quality'> = { image };
+        onSubmit(options);
+    };
+
+    return (
+        <form onSubmit={handleSubmit} className="space-y-4">
+            <ImageUploader label="Tải ảnh cần phân tích" image={image} onImageChange={setImage} />
+            <button type="submit" disabled={isLoading || !image} className="w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-gray-900 disabled:bg-indigo-400 disabled:cursor-not-allowed">
+              {isLoading && <SpinnerIcon />}
+              {isLoading ? 'Đang phân tích...' : 'Phân tích ảnh'}
+            </button>
+        </form>
+    );
+};
+
+export const ControlPanel: React.FC<ControlPanelProps> = (props) => {
+  const renderForm = () => {
+    switch (props.mode) {
+      case 'generate':
+        return <GenerateForm {...props} />;
+      case 'edit':
+        return <EditForm {...props} />;
+      case 'swap':
+        return <SwapForm {...props} />;
+      case 'magic':
+        return <MagicForm {...props} />;
+      case 'analyze':
+        return <AnalyzeForm {...props} />;
+      default:
+        return null;
+    }
+  };
+
+  return <div className="p-4 sm:p-6">{renderForm()}</div>;
 };
