@@ -11,6 +11,7 @@ interface ControlPanelProps {
   onSubmit: (options: any) => void;
   isLoading: boolean;
   quality: OutputQuality;
+  cooldown: number;
 }
 
 const PromptSuggestions: React.FC<{prompt: string, images?: ImageData[], onSelect: (suggestion: string) => void}> = ({ prompt, images, onSelect }) => {
@@ -23,6 +24,8 @@ const PromptSuggestions: React.FC<{prompt: string, images?: ImageData[], onSelec
             return;
         }
         setIsSuggesting(true);
+        // FIX: Clear previous suggestions to ensure UI updates on re-fetch.
+        setSuggestions([]); 
         try {
             const result = await geminiService.generatePromptSuggestions({ prompt, images });
             setSuggestions(result);
@@ -34,29 +37,28 @@ const PromptSuggestions: React.FC<{prompt: string, images?: ImageData[], onSelec
         }
     };
 
-    if (suggestions.length > 0) {
-        return (
-            <div className="mt-2 space-y-2">
-                <p className="text-xs text-gray-400">Gợi ý từ AI:</p>
-                {suggestions.map((s, i) => (
-                     <div key={i} onClick={() => onSelect(s)} className="p-2 bg-gray-700/50 rounded-md text-sm text-gray-300 cursor-pointer hover:bg-gray-700">
-                        {s}
-                    </div>
-                ))}
-            </div>
-        )
-    }
-
     return (
-        <button 
-            type="button" 
-            onClick={handleSuggest}
-            disabled={isSuggesting}
-            className="mt-2 w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-gray-900 disabled:bg-indigo-400 disabled:cursor-not-allowed"
-        >
-            {isSuggesting ? <SpinnerIcon /> : <SparklesIcon />}
-            <span className="ml-2">{isSuggesting ? "Đang lấy gợi ý..." : "Gợi ý Prompt"}</span>
-        </button>
+        <>
+            {suggestions.length > 0 && (
+                <div className="mt-2 space-y-2">
+                    <p className="text-xs text-gray-400">Gợi ý từ AI (nhấn để sử dụng):</p>
+                    {suggestions.map((s, i) => (
+                         <div key={i} onClick={() => onSelect(s)} className="p-2 bg-gray-700/50 rounded-md text-sm text-gray-300 cursor-pointer hover:bg-gray-700">
+                            {s}
+                        </div>
+                    ))}
+                </div>
+            )}
+            <button 
+                type="button" 
+                onClick={handleSuggest}
+                disabled={isSuggesting}
+                className="mt-2 w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-gray-900 disabled:bg-indigo-400 disabled:cursor-not-allowed"
+            >
+                {isSuggesting ? <SpinnerIcon /> : <SparklesIcon />}
+                <span className="ml-2">{isSuggesting ? "Đang lấy gợi ý..." : (suggestions.length > 0 ? "Tạo gợi ý khác" : "Gợi ý Prompt")}</span>
+            </button>
+        </>
     );
 };
 
@@ -86,7 +88,7 @@ const PromptAssistant: React.FC<{ onTagClick: (tag: string) => void }> = ({ onTa
 };
 
 
-const GenerateForm: React.FC<Omit<ControlPanelProps, 'mode' | 'quality'>> = ({ onSubmit, isLoading }) => {
+const GenerateForm: React.FC<Omit<ControlPanelProps, 'mode' | 'quality'>> = ({ onSubmit, isLoading, cooldown }) => {
   const [prompt, setPrompt] = useState('');
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>('1:1');
   const [numberOfImages, setNumberOfImages] = useState(4);
@@ -154,17 +156,17 @@ const GenerateForm: React.FC<Omit<ControlPanelProps, 'mode' | 'quality'>> = ({ o
 
       <button
         type="submit"
-        disabled={isLoading || !prompt.trim()}
+        disabled={isLoading || cooldown > 0 || !prompt.trim()}
         className="w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-gray-900 disabled:bg-indigo-400 disabled:cursor-not-allowed"
       >
         {isLoading && <SpinnerIcon />}
-        {isLoading ? 'Đang tạo...' : 'Tạo ảnh'}
+        {isLoading ? 'Đang tạo...' : cooldown > 0 ? `Vui lòng đợi (${cooldown}s)` : 'Tạo ảnh'}
       </button>
     </form>
   );
 };
 
-const EditForm: React.FC<Omit<ControlPanelProps, 'mode' | 'quality'>> = ({ onSubmit, isLoading }) => {
+const EditForm: React.FC<Omit<ControlPanelProps, 'mode' | 'quality'>> = ({ onSubmit, isLoading, cooldown }) => {
     const [prompt, setPrompt] = useState('');
     const [aspectRatio, setAspectRatio] = useState<AspectRatio>('1:1');
     const [characterImages, setCharacterImages] = useState<ImageData[]>([]);
@@ -235,15 +237,15 @@ const EditForm: React.FC<Omit<ControlPanelProps, 'mode' | 'quality'>> = ({ onSub
               <input type="range" id="numberOfVariations" min="1" max="4" value={numberOfVariations} onChange={e => setNumberOfVariations(Number(e.target.value))} className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer" />
            </div>
 
-          <button type="submit" disabled={isLoading || !prompt.trim() || characterImages.length === 0} className="w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-gray-900 disabled:bg-indigo-400 disabled:cursor-not-allowed">
+          <button type="submit" disabled={isLoading || cooldown > 0 || !prompt.trim() || characterImages.length === 0} className="w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-gray-900 disabled:bg-indigo-400 disabled:cursor-not-allowed">
             {isLoading && <SpinnerIcon />}
-            {isLoading ? 'Đang xử lý...' : 'Thực hiện'}
+            {isLoading ? 'Đang xử lý...' : cooldown > 0 ? `Vui lòng đợi (${cooldown}s)` : 'Thực hiện'}
           </button>
       </form>
     );
 };
 
-const SwapForm: React.FC<Omit<ControlPanelProps, 'mode' | 'quality'>> = ({ onSubmit, isLoading }) => {
+const SwapForm: React.FC<Omit<ControlPanelProps, 'mode' | 'quality'>> = ({ onSubmit, isLoading, cooldown }) => {
     const [prompt, setPrompt] = useState('');
     const [sourceFaceImage, setSourceFaceImage] = useState<ImageData | null>(null);
     const [targetImage, setTargetImage] = useState<ImageData | null>(null);
@@ -262,8 +264,14 @@ const SwapForm: React.FC<Omit<ControlPanelProps, 'mode' | 'quality'>> = ({ onSub
     return (
       <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
-            <ImageUploader label="Ảnh khuôn mặt gốc" image={sourceFaceImage} onImageChange={setSourceFaceImage} />
-            <ImageUploader label="Ảnh đích" image={targetImage} onImageChange={setTargetImage} />
+            <div>
+                <ImageUploader label="Ảnh khuôn mặt gốc" image={sourceFaceImage} onImageChange={setSourceFaceImage} />
+                <p className="text-xs text-gray-500 mt-1 px-1">Tải lên ảnh chân dung rõ mặt để có kết quả tốt nhất.</p>
+            </div>
+            <div>
+                <ImageUploader label="Ảnh đích" image={targetImage} onImageChange={setTargetImage} />
+                <p className="text-xs text-gray-500 mt-1 px-1">Ảnh mà bạn muốn ghép khuôn mặt vào.</p>
+            </div>
           </div>
           <div>
             <label htmlFor="prompt-swap" className="block text-sm font-medium text-gray-300 mb-2">Yêu cầu thêm (tùy chọn)</label>
@@ -280,15 +288,15 @@ const SwapForm: React.FC<Omit<ControlPanelProps, 'mode' | 'quality'>> = ({ onSub
               <label htmlFor="numVariationsSwap" className="block text-sm font-medium text-gray-300 mb-2">Số phiên bản: {numberOfVariations}</label>
               <input type="range" id="numVariationsSwap" min="1" max="4" value={numberOfVariations} onChange={e => setNumberOfVariations(Number(e.target.value))} className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer" />
            </div>
-          <button type="submit" disabled={isLoading || !sourceFaceImage || !targetImage} className="w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-gray-900 disabled:bg-indigo-400 disabled:cursor-not-allowed">
+          <button type="submit" disabled={isLoading || cooldown > 0 || !sourceFaceImage || !targetImage} className="w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-gray-900 disabled:bg-indigo-400 disabled:cursor-not-allowed">
             {isLoading && <SpinnerIcon />}
-            {isLoading ? 'Đang hoán đổi...' : 'Hoán đổi khuôn mặt'}
+            {isLoading ? 'Đang hoán đổi...' : cooldown > 0 ? `Vui lòng đợi (${cooldown}s)` : 'Hoán đổi khuôn mặt'}
           </button>
       </form>
     );
 };
 
-const MagicForm: React.FC<Omit<ControlPanelProps, 'mode' | 'quality'>> = ({ onSubmit, isLoading }) => {
+const MagicForm: React.FC<Omit<ControlPanelProps, 'mode' | 'quality'>> = ({ onSubmit, isLoading, cooldown }) => {
     const [action, setAction] = useState<MagicAction>('upscale');
     const [image, setImage] = useState<ImageData | null>(null);
     const [prompt, setPrompt] = useState('');
@@ -340,16 +348,16 @@ const MagicForm: React.FC<Omit<ControlPanelProps, 'mode' | 'quality'>> = ({ onSu
                   </div>
             )}
 
-            <button type="submit" disabled={isLoading || !image || (needsPrompt && !prompt.trim())} className="w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-gray-900 disabled:bg-indigo-400 disabled:cursor-not-allowed">
+            <button type="submit" disabled={isLoading || cooldown > 0 || !image || (needsPrompt && !prompt.trim())} className="w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-gray-900 disabled:bg-indigo-400 disabled:cursor-not-allowed">
               {isLoading && <SpinnerIcon />}
-              {isLoading ? 'Đang xử lý...' : 'Áp dụng Magic'}
+              {isLoading ? 'Đang xử lý...' : cooldown > 0 ? `Vui lòng đợi (${cooldown}s)` : 'Áp dụng Magic'}
             </button>
         </form>
     );
 };
 
 
-const AnalyzeForm: React.FC<Omit<ControlPanelProps, 'mode' | 'quality'>> = ({ onSubmit, isLoading }) => {
+const AnalyzeForm: React.FC<Omit<ControlPanelProps, 'mode' | 'quality'>> = ({ onSubmit, isLoading, cooldown }) => {
     const [image, setImage] = useState<ImageData | null>(null);
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -365,9 +373,9 @@ const AnalyzeForm: React.FC<Omit<ControlPanelProps, 'mode' | 'quality'>> = ({ on
     return (
         <form onSubmit={handleSubmit} className="space-y-4">
             <ImageUploader label="Tải ảnh cần phân tích" image={image} onImageChange={setImage} />
-            <button type="submit" disabled={isLoading || !image} className="w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-gray-900 disabled:bg-indigo-400 disabled:cursor-not-allowed">
+            <button type="submit" disabled={isLoading || cooldown > 0 || !image} className="w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-gray-900 disabled:bg-indigo-400 disabled:cursor-not-allowed">
               {isLoading && <SpinnerIcon />}
-              {isLoading ? 'Đang phân tích...' : 'Phân tích ảnh'}
+              {isLoading ? 'Đang phân tích...' : cooldown > 0 ? `Vui lòng đợi (${cooldown}s)` : 'Phân tích ảnh'}
             </button>
         </form>
     );

@@ -1,7 +1,6 @@
 import { GoogleGenAI, Modality, Type } from "@google/genai";
 import type { GenerateOptions, EditOptions, SwapOptions, MagicOptions, AnalyzeOptions, ImageData, SuggestionOptions } from '../types';
 
-// FIX: Initialize the GoogleGenAI client according to guidelines
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const fileToGenerativePart = (imageData: ImageData) => {
@@ -13,9 +12,38 @@ const fileToGenerativePart = (imageData: ImageData) => {
     };
 };
 
+// Helper to add a delay between API calls
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Helper function to provide more specific error messages to the user.
+const handleGeminiError = (error: any, defaultMessage: string): never => {
+    console.error("Gemini Service Error:", error);
+    try {
+        // The error from the API can sometimes be a stringified JSON in the message property.
+        if (error.message && typeof error.message === 'string') {
+            const errorObj = JSON.parse(error.message);
+            if (errorObj.error?.status === 'RESOURCE_EXHAUSTED') {
+                throw new Error('Bạn đã vượt quá hạn ngạch sử dụng API. Vui lòng đợi một lát rồi thử lại.');
+            }
+             // Provide a more specific error message if available
+            if (errorObj.error?.message) {
+                throw new Error(`Lỗi từ AI: ${errorObj.error.message}`);
+            }
+        }
+    } catch (e) {
+        // If parsing fails or it's another error, check if the error is an instance of Error
+        if (e instanceof Error) {
+            // rethrow the specific error we created or another parsed error
+            throw e;
+        }
+    }
+    // Fallback for any other type of error
+    throw new Error(defaultMessage);
+};
+
+
 export const generateImage = async (options: GenerateOptions): Promise<string[]> => {
     try {
-        // FIX: Use the 'imagen-4.0-generate-001' model for image generation
         const response = await ai.models.generateImages({
             model: 'imagen-4.0-generate-001',
             prompt: options.prompt,
@@ -28,8 +56,7 @@ export const generateImage = async (options: GenerateOptions): Promise<string[]>
 
         return response.generatedImages.map(img => img.image.imageBytes);
     } catch (error) {
-        console.error("Error generating image:", error);
-        throw new Error("Không thể tạo ảnh. Vui lòng thử lại.");
+        handleGeminiError(error, "Không thể tạo ảnh. Vui lòng thử lại.");
     }
 };
 
@@ -37,72 +64,94 @@ export const editImage = async (options: EditOptions): Promise<string[]> => {
     try {
         const parts: any[] = [];
         
-        options.characterImages.forEach(img => parts.push(fileToGenerativePart(img)));
-        if (options.productImage) parts.push(fileToGenerativePart(options.productImage));
-        if (options.backgroundImage) parts.push(fileToGenerativePart(options.backgroundImage));
-        
-        let fullPrompt = options.prompt;
-        if(options.aspectRatio) {
-            fullPrompt += `\n\nLưu ý quan trọng: Tỷ lệ khung hình của ảnh đầu ra phải là ${options.aspectRatio}.`
+        // Label the images for clarity for the model
+        parts.push({ text: "CÁC YẾU TỐ ĐẦU VÀO:" });
+        options.characterImages.forEach((img, i) => {
+            parts.push({ text: `[HÌNH ẢNH NHÂN VẬT ${i + 1}]` });
+            parts.push(fileToGenerativePart(img));
+        });
+        if (options.productImage) {
+            parts.push({ text: "[HÌNH ẢNH SẢN PHẨM]" });
+            parts.push(fileToGenerativePart(options.productImage));
         }
-
-        parts.push({ text: fullPrompt });
+        if (options.backgroundImage) {
+            parts.push({ text: "[HÌNH ẢNH NỀN]" });
+            parts.push(fileToGenerativePart(options.backgroundImage));
+        }
         
-        // FIX: The API only returns one image at a time, so we call it multiple times for variations
-        const imagePromises = Array(options.numberOfVariations).fill(null).map(async () => {
-             // FIX: Use 'gemini-2.5-flash-image-preview' for image editing tasks
+        // Create a more explicit, machine-like prompt with a new rule for scaling
+        let instruction = `HÀNH ĐỘNG: TẠO ẢNH MỚI.\n\nQUY TẮC:\n- Sử dụng các đặc điểm chính của nhân vật từ [HÌNH ẢNH NHÂN VẬT].\n- TỶ LỆ QUAN TRỌNG: Đảm bảo nhân vật có tỷ lệ kích thước phù hợp và thực tế so với bối cảnh trong [HÌNH ẢNH NỀN]. Nhân vật không được trông quá lớn hoặc quá nhỏ một cách phi thực tế.\n- Thực hiện chính xác mô tả sau: "${options.prompt}".\n- Tỷ lệ khung hình cuối cùng phải là ${options.aspectRatio}.\n\nĐẦU RA BẮT BUỘC: CHỈ MỘT HÌNH ẢNH.`;
+        
+        parts.push({ text: instruction });
+        
+        const results: string[] = [];
+        for (let i = 0; i < options.numberOfVariations; i++) {
              const response = await ai.models.generateContent({
                 model: 'gemini-2.5-flash-image-preview',
                 contents: { parts },
                 config: {
+                    // FIX: Per Gemini API guidelines, image editing models must include both IMAGE and TEXT modalities.
                     responseModalities: [Modality.IMAGE, Modality.TEXT],
                 },
             });
 
             const imagePart = response.candidates?.[0]?.content?.parts.find(p => p.inlineData);
             if (!imagePart || !imagePart.inlineData) {
-                const textResponse = response.text;
-                throw new Error(`API không trả về hình ảnh. Phản hồi văn bản: ${textResponse}`);
+                const textResponse = response.text || '(không có phản hồi văn bản)';
+                throw new Error(`API không trả về hình ảnh như yêu cầu. Phản hồi văn bản: ${textResponse}`);
             }
-            return imagePart.inlineData.data;
-        });
+            results.push(imagePart.inlineData.data);
 
-        return Promise.all(imagePromises);
+            // Add a delay between requests to avoid hitting rate limits
+            if (i < options.numberOfVariations - 1) {
+                await delay(10000); // 10-second delay
+            }
+        }
+
+        return results;
 
     } catch (error) {
-        console.error("Error editing image:", error);
-        throw new Error("Không thể chỉnh sửa ảnh. Vui lòng thử lại.");
+        handleGeminiError(error, "Không thể chỉnh sửa ảnh. Vui lòng thử lại.");
     }
 };
 
 export const swapFaces = async (options: SwapOptions): Promise<string[]> => {
      try {
         const parts = [
+            { text: "[KHUÔN MẶT NGUỒN]" },
             fileToGenerativePart(options.sourceFaceImage),
+            { text: "[ẢNH ĐÍCH]" },
             fileToGenerativePart(options.targetImage),
-            { text: `Hoán đổi khuôn mặt từ hình ảnh đầu tiên vào người trong hình ảnh thứ hai. Duy trì phong cách, ánh sáng và bối cảnh của hình thứ hai. Yêu cầu thêm: ${options.prompt}` },
+            { text: `HÀNH ĐỘNG: HOÁN ĐỔI KHUÔN MẶT.\n\nQUY TẮC:\n- Lấy khuôn mặt từ [KHUÔN MẶT NGUỒN] và thay thế cho khuôn mặt của người trong [ẢNH ĐÍCH].\n- CỰC KỲ QUAN TRỌNG: PHẢI GIỮ NGUYÊN 100% tất cả các yếu tố khác của [ẢNH ĐÍCH], bao gồm: quần áo, tư thế, bối cảnh, ánh sáng, màu sắc và phong cách nghệ thuật.\n- Khuôn mặt mới phải được hoà trộn một cách tự nhiên và chân thực.\n- ${options.prompt ? `YÊU CẦU BỔ SUNG: ${options.prompt}` : ''}\n\nĐẦU RA BẮT BUỘC: CHỈ MỘT HÌNH ẢNH.` },
         ];
         
-        const imagePromises = Array(options.numberOfVariations).fill(null).map(async () => {
+        const results: string[] = [];
+        for (let i = 0; i < options.numberOfVariations; i++) {
             const response = await ai.models.generateContent({
                 model: 'gemini-2.5-flash-image-preview',
                 contents: { parts },
                 config: {
+                    // FIX: Per Gemini API guidelines, image editing models must include both IMAGE and TEXT modalities.
                     responseModalities: [Modality.IMAGE, Modality.TEXT],
                 },
             });
             const imagePart = response.candidates?.[0]?.content?.parts.find(p => p.inlineData);
             if (!imagePart || !imagePart.inlineData) {
-                throw new Error("API không trả về hình ảnh.");
+                const textResponse = response.text || '(không có phản hồi văn bản)';
+                throw new Error(`API không trả về hình ảnh như yêu cầu. Phản hồi văn bản: ${textResponse}`);
             }
-            return imagePart.inlineData.data;
-        });
+            results.push(imagePart.inlineData.data);
+
+            // Add a delay between requests to avoid hitting rate limits
+            if (i < options.numberOfVariations - 1) {
+                await delay(10000); // 10-second delay
+            }
+        }
         
-        return Promise.all(imagePromises);
+        return results;
 
     } catch (error) {
-        console.error("Error swapping faces:", error);
-        throw new Error("Không thể hoán đổi khuôn mặt. Vui lòng thử lại.");
+        handleGeminiError(error, "Không thể hoán đổi khuôn mặt. Vui lòng thử lại.");
     }
 };
 
@@ -153,8 +202,7 @@ export const magicAction = async (options: MagicOptions): Promise<string[]> => {
         return [imagePart.inlineData.data];
 
     } catch (error) {
-        console.error("Error with magic action:", error);
-        throw new Error("Không thể thực hiện hành động. Vui lòng thử lại.");
+        handleGeminiError(error, "Không thể thực hiện hành động. Vui lòng thử lại.");
     }
 };
 
@@ -165,17 +213,14 @@ export const analyzeImage = async (options: AnalyzeOptions): Promise<string> => 
             { text: 'Hãy mô tả chi tiết hình ảnh này. Tạo một prompt mô tả có thể được sử dụng để tạo ra một hình ảnh tương tự bằng trình tạo ảnh AI. Tập trung vào chủ thể, phong cách, bố cục, màu sắc và ánh sáng.' },
         ];
 
-        // FIX: Use 'gemini-2.5-flash' model for text-based tasks like analysis
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: { parts },
         });
 
-        // FIX: Access the text output directly from the response object
         return response.text;
     } catch (error) {
-        console.error("Error analyzing image:", error);
-        throw new Error("Không thể phân tích ảnh. Vui lòng thử lại.");
+        handleGeminiError(error, "Không thể phân tích ảnh. Vui lòng thử lại.");
     }
 };
 
@@ -212,11 +257,22 @@ export const generatePromptSuggestions = async (options: SuggestionOptions): Pro
             }
         });
         
-        const jsonText = response.text;
-        const result = JSON.parse(jsonText);
-        return result.suggestions || [];
+        let jsonText = response.text.trim();
+        const jsonRegex = /```json\s*([\s\S]*?)\s*```/;
+        const match = jsonText.match(jsonRegex);
+        if (match && match[1]) {
+            jsonText = match[1];
+        }
+
+        try {
+            const result = JSON.parse(jsonText);
+            return result.suggestions || [];
+        } catch (parseError) {
+             console.error("Failed to parse JSON response from AI:", jsonText);
+             throw new Error("AI đã trả về một định dạng gợi ý không hợp lệ.");
+        }
+
     } catch (error) {
-        console.error("Error generating prompt suggestions:", error);
-        throw new Error("Không thể tạo gợi ý. Vui lòng thử lại.");
+        handleGeminiError(error, "Không thể tạo gợi ý. Vui lòng thử lại.");
     }
 };

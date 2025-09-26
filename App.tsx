@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { ControlPanel } from './components/ControlPanel';
 import { ResultsDisplay } from './components/ResultsDisplay';
 import { LightbulbIcon } from './components/icons/LightbulbIcon';
@@ -6,6 +6,7 @@ import * as geminiService from './services/geminiService';
 import type { AppMode, OutputQuality } from './types';
 import { useOutputQuality } from './hooks/useOutputQuality';
 import { OUTPUT_QUALITIES } from './constants';
+import { Toast } from './components/Toast';
 
 const App: React.FC = () => {
   const [mode, setMode] = useState<AppMode>('generate');
@@ -13,6 +14,16 @@ const App: React.FC = () => {
   const [results, setResults] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [quality, setQuality] = useOutputQuality();
+  const [rateLimitCooldown, setRateLimitCooldown] = useState(0);
+
+  useEffect(() => {
+    if (rateLimitCooldown > 0) {
+      const timerId = setTimeout(() => {
+        setRateLimitCooldown(prev => prev - 1);
+      }, 1000);
+      return () => clearTimeout(timerId);
+    }
+  }, [rateLimitCooldown]);
 
   const handleModeChange = (newMode: AppMode) => {
     setMode(newMode);
@@ -52,7 +63,13 @@ const App: React.FC = () => {
         setResults(Array.isArray(response) ? response : [response]);
 
     } catch (e: any) {
-        setError(e.message || 'Đã xảy ra lỗi không xác định.');
+        const errorMessage = e.message || 'Đã xảy ra lỗi không xác định.';
+        if (errorMessage.includes('hạn ngạch')) { // Keyword for "quota"
+            setRateLimitCooldown(60);
+            setError('Bạn đã gửi quá nhiều yêu cầu. Vui lòng đợi một lát.');
+        } else {
+            setError(errorMessage);
+        }
     } finally {
         setIsLoading(false);
     }
@@ -68,6 +85,7 @@ const App: React.FC = () => {
 
   return (
     <div className="bg-gray-900 text-white min-h-screen font-sans">
+      {error && <Toast message={error} onClose={() => setError(null)} />}
       <div className="container mx-auto px-4 py-8">
         <header className="text-center mb-8">
           <h1 className="text-4xl sm:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-indigo-600">
@@ -100,6 +118,7 @@ const App: React.FC = () => {
                 onSubmit={handleSubmit} 
                 isLoading={isLoading}
                 quality={quality}
+                cooldown={rateLimitCooldown}
               />
                <div className="p-4 border-t border-gray-700">
                 <label htmlFor="quality-selector" className="block text-sm font-medium text-gray-300 mb-2">Chất lượng đầu ra</label>
@@ -122,7 +141,6 @@ const App: React.FC = () => {
             <ResultsDisplay 
               isLoading={isLoading} 
               results={results}
-              error={error}
               mode={mode}
             />
           </div>
@@ -130,6 +148,7 @@ const App: React.FC = () => {
 
          <footer className="text-center mt-12 text-gray-500 text-sm">
             <p>Powered by Google Gemini. Interface designed by a world-class senior frontend engineer.</p>
+            <p className="mt-2">bản quyền thuộc về ScodeVN : 0394091919</p>
         </footer>
       </div>
     </div>

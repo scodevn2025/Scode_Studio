@@ -9,7 +9,6 @@ import { ImageModal } from './ImageModal';
 interface ResultsDisplayProps {
   isLoading: boolean;
   results: string[];
-  error: string | null;
   mode: AppMode;
 }
 
@@ -119,7 +118,7 @@ const AnalyzedTextResult: React.FC<{ text: string }> = ({ text }) => {
   );
 };
 
-export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ isLoading, results, error, mode }) => {
+export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ isLoading, results, mode }) => {
   const [zoomedImage, setZoomedImage] = useState<string | null>(null);
 
   const handleDownload = (base64Image: string, index: number) => {
@@ -156,14 +155,8 @@ export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ isLoading, resul
     <>
       <div className="bg-gray-800 rounded-lg p-4 sm:p-6 min-h-[60vh] flex items-center justify-center border-2 border-dashed border-gray-700">
         {isLoading && <LoadingState />}
-        {!isLoading && error && (
-          <div className="text-center text-red-400">
-            <h3 className="text-xl font-semibold mb-2">Rất tiếc, đã có lỗi xảy ra</h3>
-            <p className="text-sm bg-red-900/50 p-3 rounded-md">{error}</p>
-          </div>
-        )}
-        {!isLoading && !error && !hasResults && <WelcomeState mode={mode} />}
-        {!isLoading && !error && hasResults && (
+        {!isLoading && !hasResults && <WelcomeState mode={mode} />}
+        {!isLoading && hasResults && (
             mode === 'analyze' && results[0] ? (
                 <AnalyzedTextResult text={results[0]} />
             ) : (
