@@ -235,6 +235,7 @@ const EditForm: React.FC<Omit<ControlPanelProps, 'mode' | 'quality'>> = ({ onSub
            <div>
               <label htmlFor="numberOfVariations" className="block text-sm font-medium text-gray-300 mb-2">Số phiên bản: {numberOfVariations}</label>
               <input type="range" id="numberOfVariations" min="1" max="4" value={numberOfVariations} onChange={e => setNumberOfVariations(Number(e.target.value))} className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer" />
+              {numberOfVariations > 1 && <p className="text-xs text-gray-500 mt-1 px-1">Lưu ý: Mỗi phiên bản mất khoảng 30 giây để tạo do giới hạn API.</p>}
            </div>
 
           <button type="submit" disabled={isLoading || cooldown > 0 || !prompt.trim() || characterImages.length === 0} className="w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-gray-900 disabled:bg-indigo-400 disabled:cursor-not-allowed">
@@ -287,6 +288,7 @@ const SwapForm: React.FC<Omit<ControlPanelProps, 'mode' | 'quality'>> = ({ onSub
            <div>
               <label htmlFor="numVariationsSwap" className="block text-sm font-medium text-gray-300 mb-2">Số phiên bản: {numberOfVariations}</label>
               <input type="range" id="numVariationsSwap" min="1" max="4" value={numberOfVariations} onChange={e => setNumberOfVariations(Number(e.target.value))} className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer" />
+              {numberOfVariations > 1 && <p className="text-xs text-gray-500 mt-1 px-1">Lưu ý: Mỗi phiên bản mất khoảng 30 giây để tạo do giới hạn API.</p>}
            </div>
           <button type="submit" disabled={isLoading || cooldown > 0 || !sourceFaceImage || !targetImage} className="w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-gray-900 disabled:bg-indigo-400 disabled:cursor-not-allowed">
             {isLoading && <SpinnerIcon />}

@@ -104,7 +104,7 @@ export const editImage = async (options: EditOptions): Promise<string[]> => {
 
             // Add a delay between requests to avoid hitting rate limits
             if (i < options.numberOfVariations - 1) {
-                await delay(10000); // 10-second delay
+                await delay(30000); // 30-second delay
             }
         }
 
@@ -144,7 +144,7 @@ export const swapFaces = async (options: SwapOptions): Promise<string[]> => {
 
             // Add a delay between requests to avoid hitting rate limits
             if (i < options.numberOfVariations - 1) {
-                await delay(10000); // 10-second delay
+                await delay(30000); // 30-second delay
             }
         }
         
