@@ -28,7 +28,15 @@ const App: React.FC = () => {
 
   const API_KEY_STORAGE_KEY = 'ai-studio-gemini-api-key';
   const DEFAULT_API_KEY = 'AIzaSyDAx4_ghqjewp4pk3OanVlsliIE7fpTaKQ';
-  const [apiKey, setApiKey] = useState<string>(() => localStorage.getItem(API_KEY_STORAGE_KEY) || DEFAULT_API_KEY);
+  
+  const [apiKey, setApiKey] = useState<string>(() => {
+    try {
+      return localStorage.getItem(API_KEY_STORAGE_KEY) || DEFAULT_API_KEY;
+    } catch (e) {
+      console.error("Lỗi khi đọc API Key từ localStorage:", e);
+      return DEFAULT_API_KEY;
+    }
+  });
 
   useEffect(() => {
     if (rateLimitCooldown > 0) {
@@ -41,9 +49,18 @@ const App: React.FC = () => {
 
   const handleApiKeySave = (newKey: string) => {
     const trimmedKey = newKey.trim();
-    setApiKey(trimmedKey);
-    localStorage.setItem(API_KEY_STORAGE_KEY, trimmedKey);
-    setIsApiKeyModalOpen(false); // Close modal on save
+    if (!trimmedKey) {
+      setError("API Key không thể để trống.");
+      return;
+    }
+    try {
+      setApiKey(trimmedKey);
+      localStorage.setItem(API_KEY_STORAGE_KEY, trimmedKey);
+      setIsApiKeyModalOpen(false);
+    } catch (e) {
+      console.error("Lỗi khi lưu API Key vào localStorage:", e);
+      setError("Không thể lưu API Key. Trình duyệt của bạn có thể đang chặn lưu trữ (localStorage). Vui lòng kiểm tra cài đặt trình duyệt.");
+    }
   };
 
   const handleModeChange = (newMode: AppMode) => {
