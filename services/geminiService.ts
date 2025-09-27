@@ -1,5 +1,5 @@
 import { GoogleGenAI, Modality, Type } from "@google/genai";
-import type { GenerateOptions, EditOptions, SwapOptions, MagicOptions, AnalyzeOptions, ImageData, SuggestionOptions } from '../types';
+import type { GenerateOptions, EditOptions, SwapOptions, MagicOptions, AnalyzeOptions, ImageData, SuggestionOptions, VideoOptions, OutputQuality } from '../types';
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
@@ -224,6 +224,117 @@ export const analyzeImage = async (options: AnalyzeOptions): Promise<string> => 
     }
 };
 
+export const generateVideo = async (options: VideoOptions & { quality: OutputQuality }): Promise<string[]> => {
+    try {
+        const params: any = {
+            model: 'veo-2.0-generate-001',
+            prompt: options.prompt,
+            config: {
+                aspectRatio: options.aspectRatio,
+                numberOfVideos: 1,
+            },
+        };
+
+        if (options.image) {
+            params.image = {
+                imageBytes: options.image.base64,
+                mimeType: options.image.mimeType,
+            };
+        }
+
+        let operation = await ai.models.generateVideos(params);
+
+        // Polling logic
+        const maxPolls = 30; // 30 polls * 10s = 5 minutes timeout
+        let pollCount = 0;
+        while (!operation.done && pollCount < maxPolls) {
+            pollCount++;
+            await delay(10000); // Poll every 10 seconds
+            try {
+                operation = await ai.operations.getVideosOperation({ operation });
+            } catch (e) {
+                console.error('Error polling for operation status:', e);
+                throw new Error('Không thể lấy trạng thái tạo video. Vui lòng thử lại.');
+            }
+        }
+
+        if (!operation.done) {
+            throw new Error('Quá trình tạo video đã hết thời gian. Vui lòng thử lại với một yêu cầu đơn giản hơn.');
+        }
+
+        const videos = operation.response?.generatedVideos;
+        if (!videos || videos.length === 0) {
+            throw new Error('Không có video nào được tạo. Yêu cầu của bạn có thể đã bị chặn.');
+        }
+
+        // Fetch the video and create a blob URL
+        const videoData = videos[0];
+        const url = decodeURIComponent(videoData.video.uri);
+        const res = await fetch(`${url}&key=${process.env.API_KEY}`);
+        
+        if (!res.ok) {
+            throw new Error(`Không thể tải video. Trạng thái: ${res.status}`);
+        }
+        
+        const blob = await res.blob();
+        const objectURL = URL.createObjectURL(blob);
+        
+        return [objectURL];
+
+    } catch (error) {
+        handleGeminiError(error, "Không thể tạo video. Vui lòng thử lại.");
+    }
+};
+
+const parseJsonResponse = (jsonText: string): any => {
+    let cleanedJsonText = jsonText.trim();
+    const jsonRegex = /```json\s*([\s\S]*?)\s*```/;
+    const match = cleanedJsonText.match(jsonRegex);
+    if (match && match[1]) {
+        cleanedJsonText = match[1];
+    }
+
+    try {
+        return JSON.parse(cleanedJsonText);
+    } catch (parseError) {
+         console.error("Failed to parse JSON response from AI:", cleanedJsonText);
+         throw new Error("AI đã trả về một định dạng gợi ý không hợp lệ.");
+    }
+}
+
+export const generateVideoIdeasFromImage = async (options: AnalyzeOptions): Promise<string[]> => {
+    try {
+        const parts = [
+            fileToGenerativePart(options.image),
+            { text: "Phân tích hình ảnh này. Với vai trò là một đạo diễn sáng tạo, hãy tạo ra 3 kịch bản video ngắn độc đáo dựa trên hình ảnh. Mỗi kịch bản phải mô tả hành động, chuyển động của máy quay và không khí tổng thể. Trả lời bằng tiếng Việt. Định dạng đầu ra phải là một đối tượng JSON có khóa 'suggestions' chứa một mảng các chuỗi kịch bản." }
+        ];
+
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: { parts },
+            config: {
+                responseMimeType: 'application/json',
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        suggestions: {
+                            type: Type.ARRAY,
+                            items: { type: Type.STRING }
+                        }
+                    },
+                    required: ['suggestions']
+                }
+            }
+        });
+        
+        const result = parseJsonResponse(response.text);
+        return result.suggestions || [];
+
+    } catch(error) {
+        handleGeminiError(error, "Không thể tạo gợi ý video. Vui lòng thử lại.")
+    }
+};
+
 export const generatePromptSuggestions = async (options: SuggestionOptions): Promise<string[]> => {
     try {
         const parts: any[] = [];
@@ -257,20 +368,8 @@ export const generatePromptSuggestions = async (options: SuggestionOptions): Pro
             }
         });
         
-        let jsonText = response.text.trim();
-        const jsonRegex = /```json\s*([\s\S]*?)\s*```/;
-        const match = jsonText.match(jsonRegex);
-        if (match && match[1]) {
-            jsonText = match[1];
-        }
-
-        try {
-            const result = JSON.parse(jsonText);
-            return result.suggestions || [];
-        } catch (parseError) {
-             console.error("Failed to parse JSON response from AI:", jsonText);
-             throw new Error("AI đã trả về một định dạng gợi ý không hợp lệ.");
-        }
+        const result = parseJsonResponse(response.text);
+        return result.suggestions || [];
 
     } catch (error) {
         handleGeminiError(error, "Không thể tạo gợi ý. Vui lòng thử lại.");

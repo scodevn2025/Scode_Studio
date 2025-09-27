@@ -5,11 +5,13 @@ import { ZoomIcon } from './icons/ZoomIcon';
 import { LOADING_MESSAGES } from '../constants';
 import type { AppMode } from '../types';
 import { ImageModal } from './ImageModal';
+import { CreateVideoIcon } from './icons/CreateVideoIcon';
 
 interface ResultsDisplayProps {
   isLoading: boolean;
   results: string[];
   mode: AppMode;
+  onCreateVideo: (base64: string, mimeType: string) => void;
 }
 
 const WelcomeState: React.FC<{mode: AppMode}> = ({mode}) => {
@@ -20,6 +22,7 @@ const WelcomeState: React.FC<{mode: AppMode}> = ({mode}) => {
       case 'generate': return 'Sẵn sàng tạo nên kiệt tác';
       case 'magic': return 'Bộ công cụ chỉnh sửa ảnh AI';
       case 'analyze': return 'Phân tích hình ảnh bằng AI';
+      case 'video': return 'Tạo video chuyển động từ ý tưởng';
       default: return '';
     }
   };
@@ -31,6 +34,7 @@ const WelcomeState: React.FC<{mode: AppMode}> = ({mode}) => {
       case 'generate': return 'Viết một mô tả chi tiết và chọn tỷ lệ khung hình để AI tạo ra 4 kết quả độc đáo.';
       case 'magic': return 'Tải lên một ảnh và chọn một thao tác nhanh: nâng cấp, xóa nền, hoặc tự động sửa màu.';
       case 'analyze': return 'Tải lên một hình ảnh và AI sẽ cung cấp một mô tả chi tiết, hoàn hảo để sử dụng làm prompt.';
+      case 'video': return 'Viết mô tả, tùy chọn tải lên một ảnh tham khảo, và để AI tạo ra một đoạn video ngắn độc đáo.';
       default: return '';
     }
   };
@@ -118,7 +122,32 @@ const AnalyzedTextResult: React.FC<{ text: string }> = ({ text }) => {
   );
 };
 
-export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ isLoading, results, mode }) => {
+const VideoResult: React.FC<{ videoUrl: string }> = ({ videoUrl }) => {
+    const handleDownload = () => {
+        const link = document.createElement('a');
+        link.href = videoUrl;
+        link.download = `ai_studio_video_${Date.now()}.mp4`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    return (
+        <div className="w-full max-w-2xl mx-auto text-center space-y-4">
+            <video src={videoUrl} controls autoPlay loop className="w-full rounded-lg shadow-lg" aria-label="Generated video result" />
+            <button
+                onClick={handleDownload}
+                className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-gray-900"
+            >
+                <DownloadIcon />
+                Tải video
+            </button>
+        </div>
+    );
+};
+
+
+export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ isLoading, results, mode, onCreateVideo }) => {
   const [zoomedImage, setZoomedImage] = useState<string | null>(null);
 
   const handleDownload = (base64Image: string, index: number) => {
@@ -150,6 +179,7 @@ export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ isLoading, resul
   const hasResults = results.length > 0;
   const numCols = results.length > 1 ? 'grid-cols-2' : 'grid-cols-1';
   const itemSpan = results.length === 1 ? 'max-w-md mx-auto' : '';
+  const showCreateVideoAction = mode === 'generate' || mode === 'edit';
 
   return (
     <>
@@ -159,6 +189,8 @@ export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ isLoading, resul
         {!isLoading && hasResults && (
             mode === 'analyze' && results[0] ? (
                 <AnalyzedTextResult text={results[0]} />
+            ) : mode === 'video' && results[0] ? (
+                <VideoResult videoUrl={results[0]} />
             ) : (
                 <div className={`grid ${numCols} gap-4 w-full`}>
                     {results.map((base64, index) => (
@@ -176,6 +208,16 @@ export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ isLoading, resul
                         >
                             <ZoomIcon />
                         </button>
+                        {showCreateVideoAction && (
+                            <button
+                                onClick={(e) => { e.stopPropagation(); onCreateVideo(base64, 'image/jpeg'); }}
+                                className="p-3 bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded-full text-white transition-colors"
+                                aria-label="Create video from image"
+                                title="Tạo video từ ảnh này"
+                            >
+                                <CreateVideoIcon />
+                            </button>
+                        )}
                         <button
                             onClick={(e) => { e.stopPropagation(); handleDownload(base64, index); }}
                             className="p-3 bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded-full text-white transition-colors"

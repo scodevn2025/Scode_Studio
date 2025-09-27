@@ -1,4 +1,4 @@
-export type AppMode = 'generate' | 'edit' | 'swap' | 'magic' | 'analyze';
+export type AppMode = 'generate' | 'edit' | 'swap' | 'magic' | 'analyze' | 'video';
 
 export type AspectRatio = '1:1' | '3:4' | '4:3' | '9:16' | '16:9';
 
@@ -45,6 +45,12 @@ export interface MagicOptions {
 
 export interface AnalyzeOptions {
   image: ImageData;
+}
+
+export interface VideoOptions {
+  prompt: string;
+  aspectRatio: AspectRatio;
+  image?: ImageData;
 }
 
 export interface SuggestionOptions {

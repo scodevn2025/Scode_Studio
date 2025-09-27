@@ -3,10 +3,16 @@ import { ControlPanel } from './components/ControlPanel';
 import { ResultsDisplay } from './components/ResultsDisplay';
 import { LightbulbIcon } from './components/icons/LightbulbIcon';
 import * as geminiService from './services/geminiService';
-import type { AppMode, OutputQuality } from './types';
+import type { AppMode, OutputQuality, ImageData } from './types';
 import { useOutputQuality } from './hooks/useOutputQuality';
 import { OUTPUT_QUALITIES } from './constants';
 import { Toast } from './components/Toast';
+
+interface InitialVideoOptions {
+    image: ImageData;
+    prompt: string;
+    suggestions: string[];
+}
 
 const App: React.FC = () => {
   const [mode, setMode] = useState<AppMode>('generate');
@@ -15,6 +21,7 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [quality, setQuality] = useOutputQuality();
   const [rateLimitCooldown, setRateLimitCooldown] = useState(0);
+  const [initialVideoOptions, setInitialVideoOptions] = useState<InitialVideoOptions | null>(null);
 
   useEffect(() => {
     if (rateLimitCooldown > 0) {
@@ -29,7 +36,33 @@ const App: React.FC = () => {
     setMode(newMode);
     setResults([]);
     setError(null);
+    setInitialVideoOptions(null);
   };
+
+  const clearInitialVideoOptions = useCallback(() => {
+    setInitialVideoOptions(null);
+  }, []);
+
+  const handleCreateVideoFromImage = useCallback(async (base64: string, mimeType: string) => {
+    setIsLoading(true);
+    setError(null);
+    setResults([]); // Clear previous results display
+    try {
+        const image = { base64, mimeType };
+        const suggestions = await geminiService.generateVideoIdeasFromImage({ image });
+
+        if (!suggestions || suggestions.length === 0) {
+            throw new Error("Không thể tạo gợi ý video cho ảnh này.");
+        }
+        
+        setInitialVideoOptions({ image, prompt: suggestions[0], suggestions });
+        setMode('video'); // Switch mode after successful analysis
+    } catch (e: any) {
+        setError(e.message || "Không thể phân tích ảnh để tạo prompt video.");
+    } finally {
+        setIsLoading(false);
+    }
+  }, []);
   
   const handleSubmit = useCallback(async (options: any) => {
     setIsLoading(true);
@@ -56,6 +89,9 @@ const App: React.FC = () => {
             case 'analyze':
                 response = await geminiService.analyzeImage(optionsWithQuality);
                 break;
+            case 'video':
+                response = await geminiService.generateVideo(optionsWithQuality);
+                break;
             default:
                 throw new Error('Chế độ không hợp lệ');
         }
@@ -80,7 +116,8 @@ const App: React.FC = () => {
       { id: 'edit', name: 'Biến hoá' },
       { id: 'swap', name: 'Hoán đổi' },
       { id: 'magic', name: 'Magic Edit' },
-      { id: 'analyze', name: 'Phân tích' }
+      { id: 'analyze', name: 'Phân tích' },
+      { id: 'video', name: 'Tạo video' },
   ];
 
   return (
@@ -119,6 +156,8 @@ const App: React.FC = () => {
                 isLoading={isLoading}
                 quality={quality}
                 cooldown={rateLimitCooldown}
+                initialVideoOptions={initialVideoOptions}
+                onClearInitialVideoOptions={clearInitialVideoOptions}
               />
                <div className="p-4 border-t border-gray-700">
                 <label htmlFor="quality-selector" className="block text-sm font-medium text-gray-300 mb-2">Chất lượng đầu ra</label>
@@ -142,6 +181,7 @@ const App: React.FC = () => {
               isLoading={isLoading} 
               results={results}
               mode={mode}
+              onCreateVideo={handleCreateVideoFromImage}
             />
           </div>
         </main>

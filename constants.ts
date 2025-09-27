@@ -32,5 +32,9 @@ export const LOADING_MESSAGES: string[] = [
     "Tham khảo ý kiến từ các danh hoạ...",
     "Đang triệu hồi sức mạnh sáng tạo...",
     "Một chút ma thuật đang được thêm vào...",
-    "Sắp xong rồi, kiệt tác đang hình thành!"
+    "Sắp xong rồi, kiệt tác đang hình thành!",
+    "Đang dựng phim, xin chờ trong giây lát...",
+    "AI đạo diễn đang hô 'diễn'!",
+    "Kết xuất từng khung hình video...",
+    "Quá trình này có thể mất vài phút, cảm ơn bạn đã kiên nhẫn."
 ];
