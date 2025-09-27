@@ -1,8 +1,6 @@
 import { GoogleGenAI, Modality, Type } from "@google/genai";
 import type { GenerateOptions, EditOptions, SwapOptions, MagicOptions, AnalyzeOptions, ImageData, SuggestionOptions, VideoOptions, OutputQuality } from '../types';
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
 const fileToGenerativePart = (imageData: ImageData) => {
     return {
         inlineData: {
@@ -23,7 +21,13 @@ const handleGeminiError = (error: any, defaultMessage: string): never => {
         if (error.message && typeof error.message === 'string') {
             const errorObj = JSON.parse(error.message);
             if (errorObj.error?.status === 'RESOURCE_EXHAUSTED') {
+                if (errorObj.error.message?.includes('Lifetime quota exceeded')) {
+                    throw new Error('Khóa API mặc định đã hết hạn ngạch. Vui lòng nhập khóa API của riêng bạn để tiếp tục.');
+                }
                 throw new Error('Bạn đã vượt quá hạn ngạch sử dụng API. Vui lòng đợi một lát rồi thử lại.');
+            }
+            if (errorObj.error?.message.includes('API key not valid')) {
+                throw new Error('API Key không hợp lệ. Vui lòng kiểm tra lại.');
             }
              // Provide a more specific error message if available
             if (errorObj.error?.message) {
@@ -42,8 +46,9 @@ const handleGeminiError = (error: any, defaultMessage: string): never => {
 };
 
 
-export const generateImage = async (options: GenerateOptions): Promise<string[]> => {
+export const generateImage = async (options: GenerateOptions, apiKey: string): Promise<string[]> => {
     try {
+        const ai = new GoogleGenAI({ apiKey });
         const response = await ai.models.generateImages({
             model: 'imagen-4.0-generate-001',
             prompt: options.prompt,
@@ -60,8 +65,9 @@ export const generateImage = async (options: GenerateOptions): Promise<string[]>
     }
 };
 
-export const editImage = async (options: EditOptions): Promise<string[]> => {
+export const editImage = async (options: EditOptions, apiKey: string): Promise<string[]> => {
     try {
+        const ai = new GoogleGenAI({ apiKey });
         const parts: any[] = [];
         
         // Label the images for clarity for the model
@@ -115,8 +121,9 @@ export const editImage = async (options: EditOptions): Promise<string[]> => {
     }
 };
 
-export const swapFaces = async (options: SwapOptions): Promise<string[]> => {
+export const swapFaces = async (options: SwapOptions, apiKey: string): Promise<string[]> => {
      try {
+        const ai = new GoogleGenAI({ apiKey });
         const parts = [
             { text: "[KHUÔN MẶT NGUỒN]" },
             fileToGenerativePart(options.sourceFaceImage),
@@ -156,7 +163,7 @@ export const swapFaces = async (options: SwapOptions): Promise<string[]> => {
 };
 
 
-export const magicAction = async (options: MagicOptions): Promise<string[]> => {
+export const magicAction = async (options: MagicOptions, apiKey: string): Promise<string[]> => {
     let prompt = '';
     switch(options.action) {
         case 'upscale':
@@ -182,6 +189,7 @@ export const magicAction = async (options: MagicOptions): Promise<string[]> => {
     }
 
     try {
+        const ai = new GoogleGenAI({ apiKey });
         const parts = [
             fileToGenerativePart(options.image),
             { text: prompt },
@@ -206,8 +214,9 @@ export const magicAction = async (options: MagicOptions): Promise<string[]> => {
     }
 };
 
-export const analyzeImage = async (options: AnalyzeOptions): Promise<string> => {
+export const analyzeImage = async (options: AnalyzeOptions, apiKey: string): Promise<string> => {
     try {
+        const ai = new GoogleGenAI({ apiKey });
         const parts = [
             fileToGenerativePart(options.image),
             { text: 'Hãy mô tả chi tiết hình ảnh này. Tạo một prompt mô tả có thể được sử dụng để tạo ra một hình ảnh tương tự bằng trình tạo ảnh AI. Tập trung vào chủ thể, phong cách, bố cục, màu sắc và ánh sáng.' },
@@ -224,8 +233,9 @@ export const analyzeImage = async (options: AnalyzeOptions): Promise<string> => 
     }
 };
 
-export const generateVideo = async (options: VideoOptions & { quality: OutputQuality }): Promise<string[]> => {
+export const generateVideo = async (options: VideoOptions & { quality: OutputQuality }, apiKey: string): Promise<string[]> => {
     try {
+        const ai = new GoogleGenAI({ apiKey });
         const params: any = {
             model: 'veo-2.0-generate-001',
             prompt: options.prompt,
@@ -270,7 +280,7 @@ export const generateVideo = async (options: VideoOptions & { quality: OutputQua
         // Fetch the video and create a blob URL
         const videoData = videos[0];
         const url = decodeURIComponent(videoData.video.uri);
-        const res = await fetch(`${url}&key=${process.env.API_KEY}`);
+        const res = await fetch(`${url}&key=${apiKey}`);
         
         if (!res.ok) {
             throw new Error(`Không thể tải video. Trạng thái: ${res.status}`);
@@ -302,8 +312,9 @@ const parseJsonResponse = (jsonText: string): any => {
     }
 }
 
-export const generateVideoIdeasFromImage = async (options: AnalyzeOptions): Promise<string[]> => {
+export const generateVideoIdeasFromImage = async (options: AnalyzeOptions, apiKey: string): Promise<string[]> => {
     try {
+        const ai = new GoogleGenAI({ apiKey });
         const parts = [
             fileToGenerativePart(options.image),
             { text: "Phân tích hình ảnh này. Với vai trò là một đạo diễn sáng tạo, hãy tạo ra 3 kịch bản video ngắn độc đáo dựa trên hình ảnh. Mỗi kịch bản phải mô tả hành động, chuyển động của máy quay và không khí tổng thể. Trả lời bằng tiếng Việt. Định dạng đầu ra phải là một đối tượng JSON có khóa 'suggestions' chứa một mảng các chuỗi kịch bản." }
@@ -335,8 +346,9 @@ export const generateVideoIdeasFromImage = async (options: AnalyzeOptions): Prom
     }
 };
 
-export const generatePromptSuggestions = async (options: SuggestionOptions): Promise<string[]> => {
+export const generatePromptSuggestions = async (options: SuggestionOptions, apiKey: string): Promise<string[]> => {
     try {
+        const ai = new GoogleGenAI({ apiKey });
         const parts: any[] = [];
         
         if (options.images && options.images.length > 0) {

@@ -1,10 +1,12 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import type { AppMode, GenerateOptions, EditOptions, SwapOptions, MagicOptions, AnalyzeOptions, AspectRatio, MagicAction, ImageData, OutputQuality, VideoOptions } from '../types';
-import { ASPECT_RATIOS, MAGIC_ACTIONS, PROMPT_SUGGESTION_TAGS } from '../constants';
+import { ASPECT_RATIOS, MAGIC_ACTIONS, PROMPT_SUGGESTION_TAGS, OUTPUT_QUALITIES } from '../constants';
 import { ImageUploader, MultiImageUploader } from './ImageUploader';
 import { SpinnerIcon } from './icons/SpinnerIcon';
 import { SparklesIcon } from './icons/SparklesIcon';
 import * as geminiService from '../services/geminiService';
+import { LightbulbIcon } from './icons/LightbulbIcon';
+
 
 interface InitialVideoOptions {
     image: ImageData;
@@ -16,12 +18,33 @@ interface ControlPanelProps {
   onSubmit: (options: any) => void;
   isLoading: boolean;
   quality: OutputQuality;
+  onQualityChange: (quality: OutputQuality) => void;
   cooldown: number;
   initialVideoOptions?: InitialVideoOptions | null;
   onClearInitialVideoOptions?: () => void;
+  apiKey: string;
 }
 
-const PromptSuggestions: React.FC<{prompt: string, images?: ImageData[], onSelect: (suggestion: string) => void, initialSuggestions?: string[]}> = ({ prompt, images, onSelect, initialSuggestions }) => {
+const QualitySelector: React.FC<{ quality: OutputQuality, onQualityChange: (q: OutputQuality) => void }> = ({ quality, onQualityChange }) => (
+    <div>
+        <label htmlFor="quality-selector" className="block text-sm font-medium text-gray-300 mb-2">Chất lượng đầu ra</label>
+        <select 
+            id="quality-selector" 
+            value={quality} 
+            onChange={e => onQualityChange(e.target.value as OutputQuality)}
+            className="w-full bg-gray-900 border border-gray-600 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white p-2"
+        >
+            {OUTPUT_QUALITIES.map(q => <option key={q.id} value={q.id}>{q.name}</option>)}
+        </select>
+        <div className="flex items-start text-xs text-gray-500 mt-2 p-2 bg-gray-900/50 rounded-md">
+            <LightbulbIcon />
+            <span className="ml-2">Chất lượng cao hơn có thể mất nhiều thời gian và chi phí hơn. Hiện tại, cài đặt này mang tính tham khảo.</span>
+        </div>
+    </div>
+);
+
+
+const PromptSuggestions: React.FC<{prompt: string, images?: ImageData[], onSelect: (suggestion: string) => void, initialSuggestions?: string[], apiKey: string}> = ({ prompt, images, onSelect, initialSuggestions, apiKey }) => {
     const [suggestions, setSuggestions] = useState<string[]>(initialSuggestions || []);
     const [isSuggesting, setIsSuggesting] = useState(false);
     
@@ -39,7 +62,7 @@ const PromptSuggestions: React.FC<{prompt: string, images?: ImageData[], onSelec
         setIsSuggesting(true);
         setSuggestions([]); 
         try {
-            const result = await geminiService.generatePromptSuggestions({ prompt, images });
+            const result = await geminiService.generatePromptSuggestions({ prompt, images }, apiKey);
             setSuggestions(result);
         } catch (error) {
             console.error(error);
@@ -64,8 +87,9 @@ const PromptSuggestions: React.FC<{prompt: string, images?: ImageData[], onSelec
             <button 
                 type="button" 
                 onClick={handleSuggest}
-                disabled={isSuggesting}
+                disabled={isSuggesting || !apiKey}
                 className="mt-2 w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-gray-900 disabled:bg-indigo-400 disabled:cursor-not-allowed"
+                title={!apiKey ? "Vui lòng nhập API Key để sử dụng tính năng này" : ""}
             >
                 {isSuggesting ? <SpinnerIcon /> : <SparklesIcon />}
                 <span className="ml-2">{isSuggesting ? "Đang lấy gợi ý..." : (suggestions.length > 0 ? "Tạo gợi ý khác" : "Gợi ý Prompt")}</span>
@@ -99,7 +123,7 @@ const PromptAssistant: React.FC<{ onTagClick: (tag: string) => void }> = ({ onTa
     );
 };
 
-const VideoForm: React.FC<Omit<ControlPanelProps, 'mode' | 'quality'>> = ({ onSubmit, isLoading, cooldown, initialVideoOptions, onClearInitialVideoOptions }) => {
+const VideoForm: React.FC<Omit<ControlPanelProps, 'mode'>> = ({ onSubmit, isLoading, cooldown, initialVideoOptions, onClearInitialVideoOptions, apiKey, quality, onQualityChange }) => {
     const [prompt, setPrompt] = useState('');
     const [aspectRatio, setAspectRatio] = useState<AspectRatio>('16:9');
     const [image, setImage] = useState<ImageData | null>(null);
@@ -146,6 +170,7 @@ const VideoForm: React.FC<Omit<ControlPanelProps, 'mode' | 'quality'>> = ({ onSu
                     images={image ? [image] : undefined} 
                     onSelect={setPrompt} 
                     initialSuggestions={initialSuggestions} 
+                    apiKey={apiKey}
                 />
             </div>
 
@@ -171,10 +196,12 @@ const VideoForm: React.FC<Omit<ControlPanelProps, 'mode' | 'quality'>> = ({ onSu
 
             <p className="text-xs text-gray-500 mt-1 px-1">Lưu ý: Quá trình tạo video có thể mất vài phút.</p>
 
+            <QualitySelector quality={quality} onQualityChange={onQualityChange} />
+
             <button
                 type="submit"
                 disabled={isLoading || cooldown > 0 || !prompt.trim()}
-                className="w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-gray-900 disabled:bg-indigo-400 disabled:cursor-not-allowed"
+                className="w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-gray-900 disabled:bg-indigo-400 disabled:cursor-not-allowed mt-4"
             >
                 {isLoading && <SpinnerIcon />}
                 {isLoading ? 'Đang tạo video...' : cooldown > 0 ? `Vui lòng đợi (${cooldown}s)` : 'Tạo video'}
@@ -184,7 +211,7 @@ const VideoForm: React.FC<Omit<ControlPanelProps, 'mode' | 'quality'>> = ({ onSu
 };
 
 
-const GenerateForm: React.FC<Omit<ControlPanelProps, 'mode' | 'quality'>> = ({ onSubmit, isLoading, cooldown }) => {
+const GenerateForm: React.FC<Omit<ControlPanelProps, 'mode'>> = ({ onSubmit, isLoading, cooldown, apiKey, quality, onQualityChange }) => {
   const [prompt, setPrompt] = useState('');
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>('1:1');
   const [numberOfImages, setNumberOfImages] = useState(4);
@@ -216,7 +243,7 @@ const GenerateForm: React.FC<Omit<ControlPanelProps, 'mode' | 'quality'>> = ({ o
           placeholder="VD: một chú mèo phi hành gia đang lướt ván trong vũ trụ, phong cách nghệ thuật số"
         />
         <PromptAssistant onTagClick={handleTagClick} />
-        <PromptSuggestions prompt={prompt} onSelect={setPrompt} />
+        <PromptSuggestions prompt={prompt} onSelect={setPrompt} apiKey={apiKey} />
       </div>
       
       <div>
@@ -249,11 +276,13 @@ const GenerateForm: React.FC<Omit<ControlPanelProps, 'mode' | 'quality'>> = ({ o
             className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
           />
        </div>
+      
+      <QualitySelector quality={quality} onQualityChange={onQualityChange} />
 
       <button
         type="submit"
         disabled={isLoading || cooldown > 0 || !prompt.trim()}
-        className="w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-gray-900 disabled:bg-indigo-400 disabled:cursor-not-allowed"
+        className="w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-gray-900 disabled:bg-indigo-400 disabled:cursor-not-allowed mt-4"
       >
         {isLoading && <SpinnerIcon />}
         {isLoading ? 'Đang tạo...' : cooldown > 0 ? `Vui lòng đợi (${cooldown}s)` : 'Tạo ảnh'}
@@ -262,7 +291,7 @@ const GenerateForm: React.FC<Omit<ControlPanelProps, 'mode' | 'quality'>> = ({ o
   );
 };
 
-const EditForm: React.FC<Omit<ControlPanelProps, 'mode' | 'quality'>> = ({ onSubmit, isLoading, cooldown }) => {
+const EditForm: React.FC<Omit<ControlPanelProps, 'mode'>> = ({ onSubmit, isLoading, cooldown, apiKey, quality, onQualityChange }) => {
     const [prompt, setPrompt] = useState('');
     const [aspectRatio, setAspectRatio] = useState<AspectRatio>('1:1');
     const [characterImages, setCharacterImages] = useState<ImageData[]>([]);
@@ -308,7 +337,7 @@ const EditForm: React.FC<Omit<ControlPanelProps, 'mode' | 'quality'>> = ({ onSub
               placeholder="VD: đặt nhân vật đứng cạnh sản phẩm trên một bãi biển lúc hoàng hôn"
             />
             <PromptAssistant onTagClick={handleTagClick} />
-            <PromptSuggestions prompt={prompt} images={allImages} onSelect={setPrompt} />
+            <PromptSuggestions prompt={prompt} images={allImages} onSelect={setPrompt} apiKey={apiKey} />
           </div>
           
           <MultiImageUploader label="Ảnh nhân vật (tối đa 4)" images={characterImages} onImagesChange={setCharacterImages} limit={4} />
@@ -334,7 +363,9 @@ const EditForm: React.FC<Omit<ControlPanelProps, 'mode' | 'quality'>> = ({ onSub
               {numberOfVariations > 1 && <p className="text-xs text-gray-500 mt-1 px-1">Lưu ý: Mỗi phiên bản mất khoảng 30 giây để tạo do giới hạn API.</p>}
            </div>
 
-          <button type="submit" disabled={isLoading || cooldown > 0 || !prompt.trim() || characterImages.length === 0} className="w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-gray-900 disabled:bg-indigo-400 disabled:cursor-not-allowed">
+          <QualitySelector quality={quality} onQualityChange={onQualityChange} />
+
+          <button type="submit" disabled={isLoading || cooldown > 0 || !prompt.trim() || characterImages.length === 0} className="w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-gray-900 disabled:bg-indigo-400 disabled:cursor-not-allowed mt-4">
             {isLoading && <SpinnerIcon />}
             {isLoading ? 'Đang xử lý...' : cooldown > 0 ? `Vui lòng đợi (${cooldown}s)` : 'Thực hiện'}
           </button>
@@ -342,7 +373,7 @@ const EditForm: React.FC<Omit<ControlPanelProps, 'mode' | 'quality'>> = ({ onSub
     );
 };
 
-const SwapForm: React.FC<Omit<ControlPanelProps, 'mode' | 'quality'>> = ({ onSubmit, isLoading, cooldown }) => {
+const SwapForm: React.FC<Omit<ControlPanelProps, 'mode'>> = ({ onSubmit, isLoading, cooldown, quality, onQualityChange }) => {
     const [prompt, setPrompt] = useState('');
     const [sourceFaceImage, setSourceFaceImage] = useState<ImageData | null>(null);
     const [targetImage, setTargetImage] = useState<ImageData | null>(null);
@@ -386,7 +417,10 @@ const SwapForm: React.FC<Omit<ControlPanelProps, 'mode' | 'quality'>> = ({ onSub
               <input type="range" id="numVariationsSwap" min="1" max="4" value={numberOfVariations} onChange={e => setNumberOfVariations(Number(e.target.value))} className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer" />
               {numberOfVariations > 1 && <p className="text-xs text-gray-500 mt-1 px-1">Lưu ý: Mỗi phiên bản mất khoảng 30 giây để tạo do giới hạn API.</p>}
            </div>
-          <button type="submit" disabled={isLoading || cooldown > 0 || !sourceFaceImage || !targetImage} className="w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-gray-900 disabled:bg-indigo-400 disabled:cursor-not-allowed">
+
+            <QualitySelector quality={quality} onQualityChange={onQualityChange} />
+
+          <button type="submit" disabled={isLoading || cooldown > 0 || !sourceFaceImage || !targetImage} className="w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-gray-900 disabled:bg-indigo-400 disabled:cursor-not-allowed mt-4">
             {isLoading && <SpinnerIcon />}
             {isLoading ? 'Đang hoán đổi...' : cooldown > 0 ? `Vui lòng đợi (${cooldown}s)` : 'Hoán đổi khuôn mặt'}
           </button>
@@ -394,7 +428,7 @@ const SwapForm: React.FC<Omit<ControlPanelProps, 'mode' | 'quality'>> = ({ onSub
     );
 };
 
-const MagicForm: React.FC<Omit<ControlPanelProps, 'mode' | 'quality'>> = ({ onSubmit, isLoading, cooldown }) => {
+const MagicForm: React.FC<Omit<ControlPanelProps, 'mode'>> = ({ onSubmit, isLoading, cooldown, quality, onQualityChange }) => {
     const [action, setAction] = useState<MagicAction>('upscale');
     const [image, setImage] = useState<ImageData | null>(null);
     const [prompt, setPrompt] = useState('');
@@ -446,7 +480,9 @@ const MagicForm: React.FC<Omit<ControlPanelProps, 'mode' | 'quality'>> = ({ onSu
                   </div>
             )}
 
-            <button type="submit" disabled={isLoading || cooldown > 0 || !image || (needsPrompt && !prompt.trim())} className="w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-gray-900 disabled:bg-indigo-400 disabled:cursor-not-allowed">
+            <QualitySelector quality={quality} onQualityChange={onQualityChange} />
+
+            <button type="submit" disabled={isLoading || cooldown > 0 || !image || (needsPrompt && !prompt.trim())} className="w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-gray-900 disabled:bg-indigo-400 disabled:cursor-not-allowed mt-4">
               {isLoading && <SpinnerIcon />}
               {isLoading ? 'Đang xử lý...' : cooldown > 0 ? `Vui lòng đợi (${cooldown}s)` : 'Áp dụng Magic'}
             </button>
@@ -455,7 +491,7 @@ const MagicForm: React.FC<Omit<ControlPanelProps, 'mode' | 'quality'>> = ({ onSu
 };
 
 
-const AnalyzeForm: React.FC<Omit<ControlPanelProps, 'mode' | 'quality'>> = ({ onSubmit, isLoading, cooldown }) => {
+const AnalyzeForm: React.FC<Omit<ControlPanelProps, 'mode' | 'quality' | 'onQualityChange'>> = ({ onSubmit, isLoading, cooldown }) => {
     const [image, setImage] = useState<ImageData | null>(null);
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -481,11 +517,7 @@ const AnalyzeForm: React.FC<Omit<ControlPanelProps, 'mode' | 'quality'>> = ({ on
 
 export const ControlPanel: React.FC<ControlPanelProps> = (props) => {
     const { mode } = props;
-
-    // FIX: Memoize the form component based on the current mode and assign a unique key.
-    // This ensures that when the mode changes, the form component is completely re-rendered
-    // from scratch, clearing all its internal state (like prompts, images, etc.)
-    // and preventing the need for a manual page reload to get a clean state.
+    
     const FormComponent = useMemo(() => {
         switch (mode) {
             case 'generate': return GenerateForm;

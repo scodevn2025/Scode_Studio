@@ -5,8 +5,10 @@ import { LightbulbIcon } from './components/icons/LightbulbIcon';
 import * as geminiService from './services/geminiService';
 import type { AppMode, OutputQuality, ImageData } from './types';
 import { useOutputQuality } from './hooks/useOutputQuality';
-import { OUTPUT_QUALITIES } from './constants';
 import { Toast } from './components/Toast';
+import { ApiKeyModal } from './components/ApiKeyModal';
+import { KeyIcon } from './components/icons/KeyIcon';
+
 
 interface InitialVideoOptions {
     image: ImageData;
@@ -22,6 +24,11 @@ const App: React.FC = () => {
   const [quality, setQuality] = useOutputQuality();
   const [rateLimitCooldown, setRateLimitCooldown] = useState(0);
   const [initialVideoOptions, setInitialVideoOptions] = useState<InitialVideoOptions | null>(null);
+  const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
+
+  const API_KEY_STORAGE_KEY = 'ai-studio-gemini-api-key';
+  const DEFAULT_API_KEY = 'AIzaSyDAx4_ghqjewp4pk3OanVlsliIE7fpTaKQ';
+  const [apiKey, setApiKey] = useState<string>(() => localStorage.getItem(API_KEY_STORAGE_KEY) || DEFAULT_API_KEY);
 
   useEffect(() => {
     if (rateLimitCooldown > 0) {
@@ -31,6 +38,13 @@ const App: React.FC = () => {
       return () => clearTimeout(timerId);
     }
   }, [rateLimitCooldown]);
+
+  const handleApiKeySave = (newKey: string) => {
+    const trimmedKey = newKey.trim();
+    setApiKey(trimmedKey);
+    localStorage.setItem(API_KEY_STORAGE_KEY, trimmedKey);
+    setIsApiKeyModalOpen(false); // Close modal on save
+  };
 
   const handleModeChange = (newMode: AppMode) => {
     setMode(newMode);
@@ -44,12 +58,16 @@ const App: React.FC = () => {
   }, []);
 
   const handleCreateVideoFromImage = useCallback(async (base64: string, mimeType: string) => {
+    if (!apiKey) {
+      setError("Vui lòng nhập Gemini API Key của bạn để tạo video.");
+      return;
+    }
     setIsLoading(true);
     setError(null);
     setResults([]); // Clear previous results display
     try {
         const image = { base64, mimeType };
-        const suggestions = await geminiService.generateVideoIdeasFromImage({ image });
+        const suggestions = await geminiService.generateVideoIdeasFromImage({ image }, apiKey);
 
         if (!suggestions || suggestions.length === 0) {
             throw new Error("Không thể tạo gợi ý video cho ảnh này.");
@@ -62,9 +80,15 @@ const App: React.FC = () => {
     } finally {
         setIsLoading(false);
     }
-  }, []);
+  }, [apiKey]);
   
   const handleSubmit = useCallback(async (options: any) => {
+    if (!apiKey) {
+        setError("Vui lòng nhập Gemini API Key của bạn để tiếp tục.");
+        setIsApiKeyModalOpen(true);
+        return;
+    }
+
     setIsLoading(true);
     setError(null);
     setResults([]);
@@ -75,22 +99,22 @@ const App: React.FC = () => {
 
         switch (mode) {
             case 'generate':
-                response = await geminiService.generateImage(optionsWithQuality);
+                response = await geminiService.generateImage(optionsWithQuality, apiKey);
                 break;
             case 'edit':
-                response = await geminiService.editImage(optionsWithQuality);
+                response = await geminiService.editImage(optionsWithQuality, apiKey);
                 break;
             case 'swap':
-                response = await geminiService.swapFaces(optionsWithQuality);
+                response = await geminiService.swapFaces(optionsWithQuality, apiKey);
                 break;
             case 'magic':
-                response = await geminiService.magicAction(optionsWithQuality);
+                response = await geminiService.magicAction(optionsWithQuality, apiKey);
                 break;
             case 'analyze':
-                response = await geminiService.analyzeImage(optionsWithQuality);
+                response = await geminiService.analyzeImage(optionsWithQuality, apiKey);
                 break;
             case 'video':
-                response = await geminiService.generateVideo(optionsWithQuality);
+                response = await geminiService.generateVideo(optionsWithQuality, apiKey);
                 break;
             default:
                 throw new Error('Chế độ không hợp lệ');
@@ -100,16 +124,17 @@ const App: React.FC = () => {
 
     } catch (e: any) {
         const errorMessage = e.message || 'Đã xảy ra lỗi không xác định.';
-        if (errorMessage.includes('hạn ngạch')) { // Keyword for "quota"
+        setError(errorMessage); // Always show the specific error message from the service
+        
+        if (errorMessage.includes('Khóa API mặc định đã hết hạn ngạch')) {
+            setIsApiKeyModalOpen(true);
+        } else if (errorMessage.includes('hạn ngạch sử dụng API')) { // Handle temporary rate limits
             setRateLimitCooldown(60);
-            setError('Bạn đã gửi quá nhiều yêu cầu. Vui lòng đợi một lát.');
-        } else {
-            setError(errorMessage);
         }
     } finally {
         setIsLoading(false);
     }
-  }, [mode, quality]);
+  }, [mode, quality, apiKey]);
 
   const MODES: { id: AppMode; name: string }[] = [
       { id: 'generate', name: 'Tạo ảnh' },
@@ -123,19 +148,36 @@ const App: React.FC = () => {
   return (
     <div className="bg-gray-900 text-white min-h-screen font-sans">
       {error && <Toast message={error} onClose={() => setError(null)} />}
+      {isApiKeyModalOpen && (
+        <ApiKeyModal
+          isOpen={isApiKeyModalOpen}
+          onClose={() => setIsApiKeyModalOpen(false)}
+          apiKey={apiKey}
+          onApiKeySave={handleApiKeySave}
+        />
+      )}
       <div className="container mx-auto px-4 py-8">
-        <header className="text-center mb-8">
+        <header className="text-center mb-8 relative">
           <h1 className="text-4xl sm:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-indigo-600">
             AI Image Studio
           </h1>
           <p className="text-gray-400 mt-2">
             Công cụ sáng tạo hình ảnh mạnh mẽ với Gemini AI
           </p>
+          <div className="absolute top-0 right-0">
+              <button
+                  onClick={() => setIsApiKeyModalOpen(true)}
+                  className="p-2 rounded-full text-gray-400 hover:bg-gray-700 hover:text-white transition-colors"
+                  title="Quản lý API Key"
+              >
+                  <KeyIcon />
+              </button>
+          </div>
         </header>
 
         <main className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-1 bg-gray-800/50 rounded-lg border border-gray-700 shadow-2xl">
-              <nav className="flex items-center justify-between border-b border-gray-700 p-2">
+          <div className="lg:col-span-1 bg-gray-800/50 rounded-lg border border-gray-700 shadow-2xl flex flex-col">
+              <nav className="flex-shrink-0 flex items-center justify-between border-b border-gray-700 p-2">
                   <div className="flex flex-wrap">
                     {MODES.map((m) => (
                       <button
@@ -150,29 +192,18 @@ const App: React.FC = () => {
                     ))}
                   </div>
               </nav>
-              <ControlPanel 
-                mode={mode} 
-                onSubmit={handleSubmit} 
-                isLoading={isLoading}
-                quality={quality}
-                cooldown={rateLimitCooldown}
-                initialVideoOptions={initialVideoOptions}
-                onClearInitialVideoOptions={clearInitialVideoOptions}
-              />
-               <div className="p-4 border-t border-gray-700">
-                <label htmlFor="quality-selector" className="block text-sm font-medium text-gray-300 mb-2">Chất lượng đầu ra</label>
-                <select 
-                  id="quality-selector" 
-                  value={quality} 
-                  onChange={e => setQuality(e.target.value as OutputQuality)}
-                  className="w-full bg-gray-900 border border-gray-600 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-white p-2"
-                >
-                  {OUTPUT_QUALITIES.map(q => <option key={q.id} value={q.id}>{q.name}</option>)}
-                </select>
-                <div className="flex items-start text-xs text-gray-500 mt-2 p-2 bg-gray-900/50 rounded-md">
-                  <LightbulbIcon />
-                  <span className="ml-2">Chất lượng cao hơn có thể mất nhiều thời gian và chi phí hơn. Hiện tại, cài đặt này mang tính tham khảo.</span>
-                </div>
+              <div className="flex-grow">
+                <ControlPanel 
+                  mode={mode} 
+                  onSubmit={handleSubmit} 
+                  isLoading={isLoading}
+                  quality={quality}
+                  onQualityChange={setQuality}
+                  cooldown={rateLimitCooldown}
+                  initialVideoOptions={initialVideoOptions}
+                  onClearInitialVideoOptions={clearInitialVideoOptions}
+                  apiKey={apiKey}
+                />
               </div>
           </div>
 
