@@ -27,7 +27,8 @@ const App: React.FC = () => {
   const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
 
   const API_KEY_STORAGE_KEY = 'ai-studio-gemini-api-key';
-  const DEFAULT_API_KEY = 'AIzaSyDAx4_ghqjewp4pk3OanVlsliIE7fpTaKQ';
+  // The default API key is now read from the environment variable set by Vite.
+  const DEFAULT_API_KEY = process.env.API_KEY || '';
   
   const [apiKey, setApiKey] = useState<string>(() => {
     try {
@@ -56,7 +57,6 @@ const App: React.FC = () => {
     try {
       setApiKey(trimmedKey);
       localStorage.setItem(API_KEY_STORAGE_KEY, trimmedKey);
-      setIsApiKeyModalOpen(false);
     } catch (e) {
       console.error("Lỗi khi lưu API Key vào localStorage:", e);
       setError("Không thể lưu API Key. Trình duyệt của bạn có thể đang chặn lưu trữ (localStorage). Vui lòng kiểm tra cài đặt trình duyệt.");

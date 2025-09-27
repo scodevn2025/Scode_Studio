@@ -35,7 +35,7 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ apiKey, onApiKeySa
                 />
                 <button
                     onClick={handleSave}
-                    disabled={!localKey.trim() || localKey === apiKey}
+                    disabled={!localKey.trim()}
                     className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 disabled:cursor-not-allowed"
                 >
                     {saved ? 'Đã lưu!' : 'Lưu'}
